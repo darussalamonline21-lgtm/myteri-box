@@ -1,0 +1,165 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Model untuk pengguna utama (toko distributor)
+model User {
+  id                  BigInt                @id @default(autoincrement())
+  name                String
+  ownerName           String?
+  phone               String
+  email               String?
+  storeCode           String?               @unique
+  passwordHash        String?
+  status              String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  
+  couponBalances      UserCouponBalance[]
+  transactions        Transaction[]
+  boxOpenLogs         UserBoxOpenLog[]
+  prizes              UserPrize[]
+}
+
+// Model untuk pengguna admin/internal
+model Admin {
+  id           BigInt   @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Model untuk setiap kampanye Mystery Box
+model Campaign {
+  id                   BigInt    @id @default(autoincrement())
+  name                 String
+  description          String?
+  startDate            DateTime
+  endDate              DateTime
+  minPurchasePerCoupon Decimal
+  maxCouponsPerUser    Int?
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  boxes                Box[]
+  prizes               Prize[]
+  userCouponBalances   UserCouponBalance[]
+  transactions         Transaction[]
+  boxOpenLogs          UserBoxOpenLog[]
+  userPrizes           UserPrize[]
+}
+
+// Model untuk "kotak" di dalam kampanye
+model Box {
+  id           BigInt          @id @default(autoincrement())
+  campaignId   BigInt
+  campaign     Campaign        @relation(fields: [campaignId], references: [id])
+  name         String
+  description  String?
+  status       String          @default("available") // 'available' or 'opened'
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  openLog      UserBoxOpenLog? // Relasi one-to-one
+}
+
+// Model untuk hadiah yang tersedia dalam sebuah kampanye
+model Prize {
+  id              BigInt         @id @default(autoincrement())
+  campaignId      BigInt
+  campaign        Campaign       @relation(fields: [campaignId], references: [id])
+  name            String
+  description     String?
+  tier            String
+  type            String
+  baseProbability Decimal
+  stockTotal      Int
+  stockRemaining  Int
+  isActive        Boolean        @default(true)
+  metadataJson    Json?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  wonLogs         UserBoxOpenLog[]
+  userPrizes      UserPrize[]
+}
+
+// Model untuk melacak saldo kupon pengguna per kampanye
+model UserCouponBalance {
+  id          BigInt   @id @default(autoincrement())
+  userId      BigInt
+  user        User     @relation(fields: [userId], references: [id])
+  campaignId  BigInt
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  totalEarned Int      @default(0)
+  totalUsed   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, campaignId])
+}
+
+// Model untuk transaksi pembelian yang menghasilkan kupon
+model Transaction {
+  id                  BigInt   @id @default(autoincrement())
+  campaignId          BigInt
+  campaign            Campaign @relation(fields: [campaignId], references: [id])
+  userId              BigInt
+  user                User     @relation(fields: [userId], references: [id])
+  invoiceNumber       String   @unique
+  transactionDate     DateTime
+  totalAmount         Decimal
+  eligibleAmount      Decimal
+  couponsGenerated    Int
+  processedForCoupons Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+// Log setiap kali pengguna membuka sebuah kotak
+model UserBoxOpenLog {
+  id          BigInt      @id @default(autoincrement())
+  campaignId  BigInt
+  campaign    Campaign    @relation(fields: [campaignId], references: [id])
+  boxId       BigInt      @unique // Satu kotak hanya bisa dibuka sekali
+  box         Box         @relation(fields: [boxId], references: [id])
+  userId      BigInt
+  user        User        @relation(fields: [userId], references: [id])
+  prizeId     BigInt?
+  prize       Prize?      @relation(fields: [prizeId], references: [id])
+  openedAt    DateTime    @default(now())
+  clientIp    String?
+  userAgent   String?
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  userPrize   UserPrize?
+}
+
+// Hadiah spesifik yang telah dimenangkan oleh pengguna
+model UserPrize {
+  id               BigInt         @id @default(autoincrement())
+  userId           BigInt
+  user             User           @relation(fields: [userId], references: [id])
+  campaignId       BigInt
+  campaign         Campaign       @relation(fields: [campaignId], references: [id])
+  prizeId          BigInt
+  prize            Prize          @relation(fields: [prizeId], references: [id])
+  userBoxOpenLogId BigInt         @unique
+  userBoxOpenLog   UserBoxOpenLog @relation(fields: [userBoxOpenLogId], references: [id])
+  status           String
+  claimReference   String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
