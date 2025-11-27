@@ -5,7 +5,8 @@ dotenv.config();
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Access backend at http://localhost:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
+  const { address, port } = server.address();
+  console.log(`Access backend at http://${address}:${port}`);
 });

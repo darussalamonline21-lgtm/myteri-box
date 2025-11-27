@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Campaign" ADD COLUMN     "roomSize" INTEGER NOT NULL DEFAULT 100;

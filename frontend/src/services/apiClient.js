@@ -1,23 +1,62 @@
 import axios from 'axios';
 
-// Buat instance Axios dengan konfigurasi dasar
+// Default API prefixes; keep configurable via env if provided
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const ADMIN_API_BASE = import.meta.env.VITE_ADMIN_API_BASE_URL || '/admin/api';
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  baseURL: API_BASE,
 });
 
-// Gunakan interceptor untuk menambahkan token otorisasi ke setiap permintaan
-// Ini jauh lebih baik daripada menambahkannya secara manual setiap kali.
 apiClient.interceptors.request.use(
   (config) => {
-    // Ambil token dari local storage (atau di mana pun Anda menyimpannya)
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      // Jika token ada, tambahkan ke header Authorization
-      config.headers.Authorization = `Bearer ${token}`;
+    const url = config.url || '';
+    const isAdminRequest = url.startsWith('/admin');
+    config.isAdminRequest = isAdminRequest;
+
+    if (isAdminRequest) {
+      // Arahkan request admin ke base backend yang benar: /admin/api/...
+      config.baseURL = ADMIN_API_BASE;
+      config.url = url.replace(/^\/admin(?:\/api)?/, '') || '/';
+
+      config.headers = config.headers || {};
+      const adminToken = localStorage.getItem('adminAuthToken');
+      if (adminToken) {
+        config.headers.Authorization = `Bearer ${adminToken}`;
+      }
+    } else {
+      // Request user biasa tetap menggunakan prefix /api
+      config.baseURL = API_BASE;
+      config.headers = config.headers || {};
+      const userToken = localStorage.getItem('authToken');
+      if (userToken) {
+        config.headers.Authorization = `Bearer ${userToken}`;
+      }
     }
+    
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Tangani 401 secara global: bersihkan token dan paksa login ulang
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      const isAdmin = error.config?.isAdminRequest;
+      if (isAdmin) {
+        localStorage.removeItem('adminAuthToken');
+        window.location.href = '/admin/login';
+      } else {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('activeCampaignId');
+        localStorage.removeItem('userId');
+        window.location.href = '/login';
+      }
+    }
     return Promise.reject(error);
   }
 );

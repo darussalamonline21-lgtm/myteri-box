@@ -8,18 +8,29 @@ import jwt from 'jsonwebtoken';
  * @access  Public
  */
 export const login = async (req, res) => {
-  const { storeCode, password } = req.body;
+
+  const storeCodeRaw = req.body?.storeCode;
+  const passwordRaw = req.body?.password;
+
+  // Normalize inputs to avoid trivial casing/whitespace mismatches
+  const storeCode = typeof storeCodeRaw === 'string' ? storeCodeRaw.trim() : '';
+  const password = typeof passwordRaw === 'string' ? passwordRaw.trim() : '';
 
   if (!storeCode || !password) {
     return res.status(400).json({ message: 'Store code and password are required' });
   }
 
   try {
-    const user = await prisma.user.findUnique({
-      where: { storeCode },
+    const user = await prisma.user.findFirst({
+      where: {
+        storeCode: {
+          equals: storeCode,
+          mode: 'insensitive',
+        },
+      },
     });
 
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+    if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
@@ -35,9 +46,18 @@ export const login = async (req, res) => {
       { expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRATION || '1h' }
     );
 
+    // Find the most recent campaign assigned to this user
+    const latestBalance = await prisma.userCouponBalance.findFirst({
+      where: { userId: user.id },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const activeCampaignId = latestBalance ? latestBalance.campaignId.toString() : null;
+
     res.status(200).json({
       message: 'Login successful',
       token: token,
+      activeCampaignId: activeCampaignId,
     });
 
   } catch (error) {

@@ -1,0 +1,27 @@
+{
+  "name": "misteri-box---copy",
+  "version": "1.0.0",
+  "description": "- [Tentang Aplikasi](#tentang-aplikasi)\r - [Arsitektur Sistem](#arsitektur-sistem)\r - [Teknologi yang Digunakan](#teknologi-yang-digunakan)\r - [Struktur Project](#struktur-project)\r - [Instalasi dan Setup](#instalasi-dan-setup)\r - [Cara Menjalankan Aplikasi](#cara-menjalankan-aplikasi)\r - [Fitur Utama](#fitur-utama)\r - [Penjelasan Alur Kerja](#penjelasan-alur-kerja)\r - [Database Schema](#database-schema)\r - [API Endpoints](#api-endpoints)\r - [Troubleshooting](#troubleshooting)",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend run start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/darussalamonline21-lgtm/myteri-box.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/darussalamonline21-lgtm/myteri-box/issues"
+  },
+  "homepage": "https://github.com/darussalamonline21-lgtm/myteri-box#readme",
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

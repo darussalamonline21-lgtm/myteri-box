@@ -27,6 +27,7 @@ model User {
   transactions        Transaction[]
   boxOpenLogs         UserBoxOpenLog[]
   prizes              UserPrize[]
+  achievements        UserAchievement[]
 }
 
 // Model untuk pengguna admin/internal
@@ -48,6 +49,7 @@ model Campaign {
   startDate            DateTime
   endDate              DateTime
   minPurchasePerCoupon Decimal
+  roomSize             Int       @default(100)
   maxCouponsPerUser    Int?
   isActive             Boolean   @default(true)
   createdAt            DateTime  @default(now())
@@ -67,12 +69,13 @@ model Box {
   campaignId   BigInt
   campaign     Campaign        @relation(fields: [campaignId], references: [id])
   name         String
+  imageUrl     String?
   description  String?
-  status       String          @default("available") // 'available' or 'opened'
+  status       String          @default("available")
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  openLog      UserBoxOpenLog? // Relasi one-to-one
+  openLog      UserBoxOpenLog?
 }
 
 // Model untuk hadiah yang tersedia dalam sebuah kampanye
@@ -81,6 +84,7 @@ model Prize {
   campaignId      BigInt
   campaign        Campaign       @relation(fields: [campaignId], references: [id])
   name            String
+  imageUrl        String?        // <-- PERUBAHAN ADA DI SINI
   description     String?
   tier            String
   type            String
@@ -132,7 +136,7 @@ model UserBoxOpenLog {
   id          BigInt      @id @default(autoincrement())
   campaignId  BigInt
   campaign    Campaign    @relation(fields: [campaignId], references: [id])
-  boxId       BigInt      @unique // Satu kotak hanya bisa dibuka sekali
+  boxId       BigInt      @unique
   box         Box         @relation(fields: [boxId], references: [id])
   userId      BigInt
   user        User        @relation(fields: [userId], references: [id])
@@ -162,4 +166,32 @@ model UserPrize {
   claimReference   String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+}
+
+// Model untuk achievement/badges
+model Achievement {
+  id          BigInt   @id @default(autoincrement())
+  code        String   @unique
+  name        String
+  description String
+  icon        String
+  tier        String
+  requirement Int
+  createdAt   DateTime @default(now())
+  
+  userAchievements UserAchievement[]
+}
+
+// Model untuk tracking achievement yang sudah di-unlock user
+model UserAchievement {
+  id            BigInt      @id @default(autoincrement())
+  userId        BigInt
+  achievementId BigInt
+  unlockedAt    DateTime    @default(now())
+  progress      Int         @default(0)
+  
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, achievementId])
 }

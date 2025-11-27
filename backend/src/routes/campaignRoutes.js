@@ -10,6 +10,7 @@ import {
 const router = express.Router();
 
 // Rute untuk mengambil data
+router.get('/my-prizes', protect, getMyPrizes); // optional ?campaignId= query
 router.get('/:campaignId/summary', protect, getCampaignSummary);
 router.get('/:campaignId/boxes', protect, getCampaignBoxes);
 router.get('/:campaignId/my-prizes', protect, getMyPrizes);

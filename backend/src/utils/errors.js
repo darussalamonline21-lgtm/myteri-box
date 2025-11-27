@@ -9,32 +9,32 @@ export class ServiceError extends Error {
 
 // Error spesifik yang bisa kita tangkap di controller
 export class CampaignInactiveError extends ServiceError {
-  constructor(message = 'This campaign is not active or has expired.') {
+  constructor(message = 'Program ini tidak aktif atau sudah berakhir.') {
     super(message, 'CAMPAIGN_INACTIVE');
   }
 }
 
 export class NoCouponsLeftError extends ServiceError {
-  constructor(message = 'You do not have enough coupons.') {
+  constructor(message = 'Kupon Anda tidak mencukupi.') {
     super(message, 'NO_COUPONS_LEFT');
   }
 }
 
 export class NoPrizesAvailableError extends ServiceError {
-  constructor(message = 'Sorry, all prizes are currently out of stock.') {
+  constructor(message = 'Maaf, semua hadiah sedang habis.') {
     super(message, 'NO_PRIZES_AVAILABLE');
   }
 }
 
 export class PrizeSelectionError extends ServiceError {
-  constructor(message = 'Could not select a prize due to high demand. Please try again.') {
+  constructor(message = 'Hadiah tidak bisa dipilih karena kendala sistem. Silakan coba lagi.') {
       super(message, 'PRIZE_SELECTION_FAILED');
   }
 }
 
 // --- CLASS BARU YANG HILANG DITAMBAHKAN DI SINI ---
 export class BoxAlreadyOpenedError extends ServiceError {
-  constructor(message = 'This mystery box has already been opened.') {
+  constructor(message = 'Box ini sudah dibuka distributor lain. Pilih box lain.') {
     super(message, 'BOX_ALREADY_OPENED');
   }
 }

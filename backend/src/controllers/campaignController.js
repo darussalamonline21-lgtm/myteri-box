@@ -1,26 +1,47 @@
 import prisma from '../utils/prisma.js';
 import { openBoxForUser } from '../services/boxService.js';
+import { getUserAchievements, checkAndUnlockAchievements } from '../services/achievementService.js';
 
 // Impor semua class error yang kita butuhkan dari file errors.js
-import { 
-    CampaignInactiveError, 
-    NoCouponsLeftError, 
-    NoPrizesAvailableError, 
-    PrizeSelectionError,
-    BoxAlreadyOpenedError,
+import {
+  CampaignInactiveError,
+  NoCouponsLeftError,
+  NoPrizesAvailableError,
+  PrizeSelectionError,
+  BoxAlreadyOpenedError,
 } from '../utils/errors.js';
 
-// --- FUNGSI 1: GET CAMPAIGN SUMMARY ---
+// --- FUNGSI 1: GET CAMPAIGN SUMMARY (ENHANCED) ---
+// Helper to safely parse IDs to BigInt while returning a readable error
+const parseIdToBigInt = (raw, label = 'id') => {
+  try {
+    if (typeof raw === 'bigint') return raw;
+    if (typeof raw === 'number' && Number.isInteger(raw)) return BigInt(raw);
+    if (typeof raw === 'string' && raw.trim() !== '') return BigInt(raw);
+  } catch (_) {
+    /* fall through to error */
+  }
+  throw new Error(`INVALID_${label.toUpperCase()}`);
+};
+
 export const getCampaignSummary = async (req, res) => {
   try {
     const userId = req.user.id;
-    const campaignId = parseInt(req.params.campaignId, 10);
-
-    if (isNaN(campaignId)) {
+    let campaignId;
+    try {
+      campaignId = parseIdToBigInt(req.params.campaignId, 'campaignId');
+    } catch {
       return res.status(400).json({ message: 'Invalid Campaign ID format.' });
     }
 
-    const [campaign, couponBalance, prizesWonCount] = await Promise.all([
+    // Fetch basic campaign data
+    const [
+      campaign,
+      couponBalance,
+      totalBoxesInCampaign,
+      availableBoxesGlobal,
+      openedBoxesGlobal
+    ] = await Promise.all([
       prisma.campaign.findUnique({
         where: { id: campaignId },
         select: { id: true, name: true, startDate: true, endDate: true, isActive: true },
@@ -29,14 +50,93 @@ export const getCampaignSummary = async (req, res) => {
         where: { userId, campaignId },
         select: { totalEarned: true, totalUsed: true },
       }),
-      prisma.userPrize.count({
-        where: { userId, campaignId },
+      prisma.box.count({
+        where: { campaignId }
       }),
+      prisma.box.count({
+        where: { campaignId, status: 'available' }
+      }),
+      prisma.box.count({
+        where: { campaignId, status: 'opened' }
+      })
     ]);
-    
+
     if (!campaign) {
       return res.status(404).json({ message: `Campaign with id ${campaignId} not found` });
     }
+
+    // Fetch user's box open logs for this campaign
+    const userBoxLogs = await prisma.userBoxOpenLog.findMany({
+      where: { userId, campaignId },
+      select: {
+        id: true,
+        boxId: true,
+        openedAt: true,
+        prize: {
+          select: { tier: true }
+        }
+      },
+      orderBy: { openedAt: 'desc' }
+    });
+
+    const totalBoxesOpened = userBoxLogs.length;
+    const totalPrizesWon = userBoxLogs.filter(log => log.prize).length;
+
+    // Calculate completion percentage
+    const completionPercentage = totalBoxesInCampaign > 0
+      ? parseFloat(((totalBoxesOpened / totalBoxesInCampaign) * 100).toFixed(2))
+      : 0;
+
+    // Calculate prize distribution by tier
+    const prizesByTier = { S: 0, A: 0, B: 0, C: 0 };
+    userBoxLogs.forEach(log => {
+      if (log.prize && log.prize.tier) {
+        prizesByTier[log.prize.tier] = (prizesByTier[log.prize.tier] || 0) + 1;
+      }
+    });
+
+    // Calculate win rate
+    const winRate = totalBoxesOpened > 0
+      ? parseFloat(((totalPrizesWon / totalBoxesOpened) * 100).toFixed(1))
+      : 0;
+
+    // Get last opened timestamp
+    const lastOpenedAt = userBoxLogs.length > 0 ? userBoxLogs[0].openedAt : null;
+
+    // Calculate streak (consecutive days)
+    let streak = 0;
+    if (userBoxLogs.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const uniqueDays = new Set();
+      userBoxLogs.forEach(log => {
+        const logDate = new Date(log.openedAt);
+        logDate.setHours(0, 0, 0, 0);
+        uniqueDays.add(logDate.getTime());
+      });
+
+      const sortedDays = Array.from(uniqueDays).sort((a, b) => b - a);
+
+      let currentDate = today.getTime();
+      for (const day of sortedDays) {
+        if (day === currentDate || day === currentDate - 86400000) {
+          streak++;
+          currentDate = day - 86400000;
+        } else {
+          break;
+        }
+      }
+    }
+
+// Calculate rooms visited (campaign room size)
+    const BOXES_PER_ROOM = campaign.roomSize || 100;
+    const roomsVisited = new Set();
+    userBoxLogs.forEach(log => {
+      // Calculate room number from box ID
+      const roomNumber = Math.ceil(Number(log.boxId) / BOXES_PER_ROOM);
+      roomsVisited.add(roomNumber);
+    });
 
     const balanceDetails = {
       totalEarned: couponBalance?.totalEarned || 0,
@@ -44,20 +144,53 @@ export const getCampaignSummary = async (req, res) => {
       balance: (couponBalance?.totalEarned || 0) - (couponBalance?.totalUsed || 0),
     };
 
-    res.status(200).json({
-      campaign: {
-        id: campaign.id.toString(),
-        name: campaign.name,
-        startDate: campaign.startDate,
-        endDate: campaign.endDate,
-        isActive: campaign.isActive,
-      },
-      couponBalance: balanceDetails,
-      stats: {
-        totalPrizesWon: prizesWonCount,
-      },
+    // Prepare stats for achievement checking
+    const stats = {
+      totalPrizesWon,
+      totalBoxesOpened,
+      totalBoxesInCampaign,
+      availableBoxesGlobal,
+      openedBoxesGlobal,
+      completionPercentage,
+      prizesByTier,
+      winRate,
+      lastOpenedAt,
+      streak,
+      roomsVisited: roomsVisited.size,
+      roomSize: BOXES_PER_ROOM,
+    };
+
+    // Check and unlock new achievements
+    await checkAndUnlockAchievements(userId, stats);
+
+    // Get achievements
+    const achievements = await getUserAchievements(userId);
+
+    // Fetch user details
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, storeCode: true, ownerName: true }
     });
-    
+
+  res.status(200).json({
+    user: {
+      name: user?.name || 'Unknown Store',
+      storeCode: user?.storeCode || '-',
+      ownerName: user?.ownerName || ''
+    },
+    campaign: {
+      id: campaign.id.toString(),
+      name: campaign.name,
+      startDate: campaign.startDate,
+      endDate: campaign.endDate,
+      isActive: campaign.isActive,
+      roomSize: campaign.roomSize,
+    },
+      couponBalance: balanceDetails,
+      stats,
+      achievements
+    });
+
   } catch (error) {
     console.error('Get campaign summary error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -69,25 +202,27 @@ export const getCampaignSummary = async (req, res) => {
 export const openBoxController = async (req, res) => {
   try {
     const userId = req.user.id;
-    const boxId = parseInt(req.params.boxId, 10);
-
-    if (isNaN(boxId)) {
+    let boxId;
+    try {
+      boxId = parseIdToBigInt(req.params.boxId, 'boxId');
+    } catch {
       return res.status(400).json({ message: 'Valid boxId is required.' });
     }
-    
+
     const box = await prisma.box.findUnique({ where: { id: boxId } });
     if (!box) {
-        return res.status(404).json({ message: 'Box not found.' });
+      return res.status(404).json({ message: 'Box not found.' });
     }
 
     const result = await openBoxForUser(userId, box.campaignId, box.id);
-    
+
     return res.status(200).json({
       prize: {
         id: result.prize.id.toString(),
         name: result.prize.name,
         tier: result.prize.tier,
         type: result.prize.type,
+        imageUrl: result.prize.imageUrl,
       },
       couponBalance: result.updatedBalance
     });
@@ -95,7 +230,7 @@ export const openBoxController = async (req, res) => {
   } catch (error) {
     // Handling error dari service
     if (error instanceof BoxAlreadyOpenedError) {
-        return res.status(409).json({ code: error.code, message: error.message });
+      return res.status(409).json({ code: error.code, message: error.message });
     }
     if (error instanceof NoCouponsLeftError) {
       return res.status(400).json({ code: error.code, message: error.message });
@@ -120,29 +255,41 @@ export const openBoxController = async (req, res) => {
 export const getMyPrizes = async (req, res) => {
   try {
     const userId = req.user.id;
-    const campaignId = parseInt(req.params.campaignId, 10);
-    if (isNaN(campaignId)) {
+    const rawCampaignId = req.params.campaignId ?? req.query.campaignId ?? null;
+
+    const whereClause = { userId };
+    if (rawCampaignId !== null) {
+      try {
+        whereClause.campaignId = parseIdToBigInt(rawCampaignId, 'campaignId');
+      } catch {
         return res.status(400).json({ message: 'Invalid Campaign ID format.' });
+      }
     }
 
     const userPrizes = await prisma.userPrize.findMany({
-      where: { userId, campaignId },
+      where: whereClause,
       select: {
         id: true,
         createdAt: true,
         status: true,
-        prize: { select: { name: true, tier: true, type: true } },
+        campaign: { select: { id: true, name: true } },
+        prize: { select: { name: true, tier: true, type: true, imageUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const formattedPrizes = userPrizes.map(p => ({
+    const formattedPrizes = userPrizes.map((p) => ({
       id: p.id.toString(),
       createdAt: p.createdAt,
-      name: p.prize.name,
-      tier: p.prize.tier,
-      type: p.prize.type,
+      name: p.prize?.name ?? 'Unknown Prize',
+      tier: p.prize?.tier ?? '-',
+      type: p.prize?.type ?? '-',
       status: p.status,
+      imageUrl: p.prize?.imageUrl ?? null,
+      campaign: {
+        id: p.campaign.id.toString(),
+        name: p.campaign.name,
+      },
     }));
 
     res.status(200).json(formattedPrizes);
@@ -156,8 +303,10 @@ export const getMyPrizes = async (req, res) => {
 // --- FUNGSI 4: GET CAMPAIGN BOXES ---
 export const getCampaignBoxes = async (req, res) => {
   try {
-    const campaignId = parseInt(req.params.campaignId, 10);
-    if (isNaN(campaignId)) {
+    let campaignId;
+    try {
+      campaignId = parseIdToBigInt(req.params.campaignId, 'campaignId');
+    } catch {
       return res.status(400).json({ message: 'Invalid Campaign ID format.' });
     }
 
@@ -180,13 +329,13 @@ export const getCampaignBoxes = async (req, res) => {
     });
 
     const formattedBoxes = boxes.map(box => ({
-        id: box.id.toString(),
-        name: box.name,
-        status: box.status,
-        openedBy: box.openLog ? {
-            userId: box.openLog.userId.toString(),
-            name: box.openLog.user.name
-        } : null
+      id: box.id.toString(),
+      name: box.name,
+      status: box.status,
+      openedBy: box.openLog ? {
+        userId: box.openLog.userId.toString(),
+        name: box.openLog.user.name
+      } : null
     }));
 
     res.status(200).json(formattedBoxes);

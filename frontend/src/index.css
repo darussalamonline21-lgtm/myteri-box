@@ -1,3 +1,6 @@
+/* stylelint-disable at-rule-no-unknown */
+/* PostCSS (with Tailwind) will process the @tailwind at-rules */
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

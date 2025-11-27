@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { seedAchievements } from '../src/services/achievementService.js';
 
 const prisma = new PrismaClient();
 
@@ -8,6 +9,7 @@ async function main() {
 
     // --- HAPUS DATA LAMA (OPSIONAL TAPI DIANJURKAN) ---
     // Hapus dalam urutan terbalik dari pembuatan untuk menghindari error relasi
+    await prisma.userAchievement.deleteMany();
     await prisma.userCouponBalance.deleteMany();
     await prisma.userPrize.deleteMany();
     await prisma.userBoxOpenLog.deleteMany();
@@ -16,7 +18,27 @@ async function main() {
     await prisma.transaction.deleteMany();
     await prisma.campaign.deleteMany();
     await prisma.user.deleteMany();
+    await prisma.achievement.deleteMany();
     console.log("Old data deleted.");
+
+    // --- SEED ADMIN DEFAULT ---
+    const adminEmail = 'admin@example.com';
+    const adminPassword = 'admin123'; // mudah diingat; ganti setelah login
+    const adminHash = await bcrypt.hash(adminPassword, 10);
+    await prisma.admin.upsert({
+        where: { email: adminEmail },
+        update: { passwordHash: adminHash, role: 'superadmin', name: 'Default Admin' },
+        create: {
+            email: adminEmail,
+            passwordHash: adminHash,
+            role: 'superadmin',
+            name: 'Default Admin',
+        }
+    });
+    console.log(`Created default admin: ${adminEmail} / ${adminPassword}`);
+
+    // --- SEED ACHIEVEMENTS ---
+    await seedAchievements();
 
     // --- BUAT CAMPAIGN BARU ---
     const campaign = await prisma.campaign.create({
@@ -102,7 +124,7 @@ async function main() {
         }
     });
     console.log(`Created user: ${user.name} (Gunakan storeCode: ${user.storeCode} dan password: ${password})`);
-    
+
     // --- BERIKAN KUPON KEPADA USER ---
     await prisma.userCouponBalance.create({
         data: {
@@ -117,10 +139,10 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+    .catch((e) => {
+        console.error(e);
+        process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
+    });
