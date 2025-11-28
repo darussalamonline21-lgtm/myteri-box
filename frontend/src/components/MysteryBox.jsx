@@ -22,18 +22,15 @@ const MysteryBox = ({ box, onClick, isOpenedByMe, isOpening, index, brandLogo, o
 
   return (
     <motion.div
-      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all duration-120 select-none
-        ${isAvailable && !isOpening
-          ? 'cursor-pointer border-yellow-500/40'
-          : 'border-gray-600/30'
-        }
+      className={`relative aspect-square rounded-xl overflow-hidden border transition-all duration-150 select-none
         ${isOpened
-          ? 'bg-black/40'
-          : 'bg-gradient-to-br from-yellow-400 to-yellow-600'
+          ? 'bg-slate-800 border-slate-700'
+          : 'bg-amber-400 border-amber-500 hover:border-amber-600 shadow-sm hover:shadow-md'
         }
+        ${isAvailable && !isOpening ? 'cursor-pointer' : ''}
       `}
       onClick={isAvailable && !isOpening ? () => onClick(id) : null}
-      whileTap={isAvailable && !isOpening ? { scale: 0.94, opacity: 0.9 } : {}}
+      whileTap={isAvailable && !isOpening ? { scale: 0.97, opacity: 0.95 } : {}}
       animate={clickShake}
       transition={
         isOpening && !prefersReducedMotion
@@ -41,27 +38,22 @@ const MysteryBox = ({ box, onClick, isOpenedByMe, isOpening, index, brandLogo, o
           : { type: "spring", stiffness: 260, damping: 22 }
       }
     >
-      {/* Glossy overlay for available boxes */}
-      {!isOpened && (
-        <div className="absolute inset-0 bg-gradient-to-b from-white/15 to-transparent"></div>
-      )}
-
-      {/* Index Number - Top Left (lebih ringkas agar pas di 5 kolom) */}
+      {/* Index Number */}
       <div
-        className={`absolute top-1 left-1 text-[9px] font-bold z-25 ${isOpened ? 'text-yellow-300' : 'text-purple-950/80'}`}
-        style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700 }}
+        className={`absolute top-1 left-1 text-[10px] font-semibold z-25 ${isOpened ? 'text-slate-200' : 'text-amber-950'}`}
       >
         #{index}
       </div>
 
-      {/* Brand logo (optional), tucked under text */}
+      {/* Brand logo (optional) */}
       {brandLogo && !isOpened && (
         <div className="absolute inset-0 flex items-center justify-center z-5 pointer-events-none">
-          <div className="w-9 h-9 rounded-lg shadow-[0_4px_8px_rgba(0,0,0,0.16)] overflow-hidden flex items-center justify-center opacity-75 bg-transparent border-0">
+          <div className="relative w-11 h-11 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-amber-200/35 blur-sm scale-110" />
             <img
               src={brandLogo}
               alt="Brand"
-              className="w-full h-full object-contain"
+              className="relative w-full h-full object-contain"
               loading="lazy"
               decoding="async"
             />
@@ -72,7 +64,7 @@ const MysteryBox = ({ box, onClick, isOpenedByMe, isOpening, index, brandLogo, o
       {/* Secondary logo when opened */}
       {openedBrandLogo && isOpened && (
         <div className="absolute inset-0 flex items-center justify-center z-5 pointer-events-none">
-          <div className="w-10 h-10 rounded-md shadow-[0_4px_8px_rgba(0,0,0,0.18)] overflow-hidden flex items-center justify-center opacity-85 bg-transparent border-0">
+          <div className="w-12 h-12 overflow-hidden flex items-center justify-center opacity-90 -translate-y-1.5">
             <img
               src={openedBrandLogo}
               alt="Brand"
@@ -84,25 +76,23 @@ const MysteryBox = ({ box, onClick, isOpenedByMe, isOpening, index, brandLogo, o
         </div>
       )}
 
-      {/* Text Group moved to bottom for clarity; brand tetap di tengah */}
       {isOpened ? (
-        <div className="absolute inset-x-0 bottom-1 flex flex-col items-center justify-end z-10 space-y-[0.5px]">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-300 leading-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
+        <div className="absolute inset-x-0 bottom-1 flex flex-col items-center justify-end z-10 space-y-[0.1px]">
+          <span className="text-[9px] font-normal uppercase tracking-wide text-slate-100 leading-tight">
             TERBUKA
           </span>
-          <span className="text-[9px] text-gray-500 text-center leading-none" style={{ fontFamily: "'Poppins', sans-serif" }}>
+          <span className="text-[9px] font-normal text-slate-300 text-center leading-tight">
             {isOpenedByMe ? 'Oleh Anda' : `Oleh ${openedBy?.name?.split(' ')[0] || 'User'}`}
           </span>
         </div>
       ) : (
         <div className="absolute inset-x-0 bottom-1 flex items-center justify-center z-3">
-          <span className="text-[10px] font-bold uppercase text-purple-950 leading-none" style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700 }}>
+          <span className="text-[10px] font-semibold uppercase text-amber-950 leading-none">
             KLIK BUKA
           </span>
         </div>
       )}
 
-      {/* Opening overlay dihapus untuk menjaga kesan ringan */}
     </motion.div>
   );
 };

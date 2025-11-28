@@ -8,7 +8,6 @@ const CampaignFormPage = () => {
     description: '',
     startDate: '',
     endDate: '',
-    minPurchasePerCoupon: '',
     isActive: false,
     boxCount: 1000
   });
@@ -40,9 +39,6 @@ const CampaignFormPage = () => {
       if (!formData.endDate) {
         throw new Error('End date is required');
       }
-      if (!formData.minPurchasePerCoupon || parseFloat(formData.minPurchasePerCoupon) <= 0) {
-        throw new Error('Minimum purchase per coupon must be greater than 0');
-      }
       if (new Date(formData.startDate) >= new Date(formData.endDate)) {
         throw new Error('End date must be after start date');
       }
@@ -55,7 +51,7 @@ const CampaignFormPage = () => {
         description: formData.description.trim() || null,
         startDate: new Date(formData.startDate).toISOString(),
         endDate: new Date(formData.endDate).toISOString(),
-        minPurchasePerCoupon: parseFloat(formData.minPurchasePerCoupon),
+        minPurchasePerCoupon: 0,
         isActive: formData.isActive,
         boxCount: parseInt(formData.boxCount)
       };
@@ -171,24 +167,7 @@ const CampaignFormPage = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Minimum Purchase Per Coupon (Rp) *
-              </label>
-              <input
-                type="number"
-                name="minPurchasePerCoupon"
-                value={formData.minPurchasePerCoupon}
-                onChange={handleChange}
-                min="0"
-                step="1000"
-                className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-                placeholder="100000"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Number of Mystery Boxes to Generate *
+                Number of Magic Boxes to Generate *
               </label>
               <input
                 type="number"

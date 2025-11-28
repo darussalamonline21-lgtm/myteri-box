@@ -11,6 +11,7 @@ const CreateUserPage = () => {
   const [formError, setFormError] = useState('');
   const [formData, setFormData] = useState({
     name: '',
+    ownerName: '',
     storeCode: '',
     password: '',
     campaignId: '',
@@ -68,7 +69,8 @@ const CreateUserPage = () => {
     try {
       await apiClient.post('/admin/users', {
         name: formData.name.trim(),
-        storeCode: formData.storeCode.trim().toUpperCase(),
+        ownerName: formData.ownerName.trim(),
+        storeCode: formData.storeCode.trim(),
         password: formData.password,
         campaignId: formData.campaignId,
         initialCoupons: couponsValue,
@@ -122,13 +124,26 @@ const CreateUserPage = () => {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Owner Name</label>
+            <input
+              type="text"
+              name="ownerName"
+              value={formData.ownerName}
+              onChange={handleChange}
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 focus:outline-none focus:border-blue-500"
+              placeholder="e.g. Bapak/Ibu Andi"
+              required
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Store Code</label>
             <input
               type="text"
               name="storeCode"
               value={formData.storeCode}
               onChange={handleChange}
-              className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 focus:outline-none focus:border-blue-500 uppercase"
+              className="w-full rounded-lg bg-gray-800 border border-gray-700 px-4 py-2 focus:outline-none focus:border-blue-500"
               placeholder="e.g. TOKO-001"
               required
             />

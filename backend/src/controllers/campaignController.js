@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma.js';
 import { openBoxForUser } from '../services/boxService.js';
 import { getUserAchievements, checkAndUnlockAchievements } from '../services/achievementService.js';
+import { deriveRoomsMeta, getRoomUnlockThreshold } from '../utils/roomUtils.js';
 
 // Impor semua class error yang kita butuhkan dari file errors.js
 import {
@@ -214,6 +215,33 @@ export const openBoxController = async (req, res) => {
       return res.status(404).json({ message: 'Box not found.' });
     }
 
+    // Enforce room unlock on backend side
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: box.campaignId },
+      select: { roomSize: true }
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found.' });
+    }
+    const roomSize = campaign.roomSize || 100;
+    const unlockThreshold = getRoomUnlockThreshold();
+
+    const campaignBoxes = await prisma.box.findMany({
+      where: { campaignId: box.campaignId },
+      select: { id: true, status: true },
+      orderBy: { id: 'asc' }
+    });
+    const roomsMeta = deriveRoomsMeta(campaignBoxes, roomSize, unlockThreshold);
+    const targetIndex = campaignBoxes.findIndex(b => b.id === box.id);
+    const roomNumber = targetIndex >= 0 ? Math.floor(targetIndex / roomSize) + 1 : null;
+    const roomMeta = roomsMeta.find(r => r.roomNumber === roomNumber);
+
+    if (!roomMeta?.isUnlocked) {
+      return res.status(403).json({
+        message: `Room ${roomNumber} belum terbuka. Buka minimal ${unlockThreshold} box di room sebelumnya untuk melanjutkan.`
+      });
+    }
+
     const result = await openBoxForUser(userId, box.campaignId, box.id);
 
     return res.status(200).json({
@@ -310,6 +338,16 @@ export const getCampaignBoxes = async (req, res) => {
       return res.status(400).json({ message: 'Invalid Campaign ID format.' });
     }
 
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: { roomSize: true }
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: `Campaign with id ${campaignId} not found` });
+    }
+    const roomSize = campaign.roomSize || 100;
+    const unlockThreshold = getRoomUnlockThreshold();
+
     const boxes = await prisma.box.findMany({
       where: { campaignId: campaignId },
       select: {
@@ -328,17 +366,29 @@ export const getCampaignBoxes = async (req, res) => {
       orderBy: { id: 'asc' },
     });
 
-    const formattedBoxes = boxes.map(box => ({
-      id: box.id.toString(),
-      name: box.name,
-      status: box.status,
-      openedBy: box.openLog ? {
-        userId: box.openLog.userId.toString(),
-        name: box.openLog.user.name
-      } : null
-    }));
+    const roomsMeta = deriveRoomsMeta(boxes, roomSize, unlockThreshold);
+    const unlockedRoomNumbers = new Set(roomsMeta.filter(r => r.isUnlocked).map(r => r.roomNumber));
 
-    res.status(200).json(formattedBoxes);
+    const formattedBoxes = boxes
+      .map((box, index) => {
+        const roomNumber = Math.floor(index / roomSize) + 1;
+        return {
+          id: box.id.toString(),
+          name: box.name,
+          status: box.status,
+          roomNumber,
+          openedBy: box.openLog ? {
+            userId: box.openLog.userId.toString(),
+            name: box.openLog.user.name
+          } : null
+        };
+      })
+      .filter(box => unlockedRoomNumbers.has(box.roomNumber));
+
+    res.status(200).json({
+      boxes: formattedBoxes,
+      rooms: roomsMeta
+    });
 
   } catch (error) {
     console.error('Get campaign boxes error:', error);

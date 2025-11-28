@@ -68,6 +68,8 @@ model Box {
   id           BigInt          @id @default(autoincrement())
   campaignId   BigInt
   campaign     Campaign        @relation(fields: [campaignId], references: [id])
+  prizeId      BigInt?
+  prize        Prize?          @relation(fields: [prizeId], references: [id])
   name         String
   imageUrl     String?
   description  String?
@@ -98,6 +100,7 @@ model Prize {
 
   wonLogs         UserBoxOpenLog[]
   userPrizes      UserPrize[]
+  boxes           Box[]
 }
 
 // Model untuk melacak saldo kupon pengguna per kampanye

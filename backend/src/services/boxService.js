@@ -18,7 +18,12 @@ export const openBoxForUser = async (userId, campaignId, boxId) => {
   }
 
   return prisma.$transaction(async (tx) => {
-    const boxToOpen = await tx.box.findUnique({ where: { id: boxId } });
+    const boxToOpen = await tx.box.findUnique({
+      where: { id: boxId },
+      include: {
+        prize: true,
+      },
+    });
     if (!boxToOpen) {
       throw new ServiceError('Box not found.', 'BOX_NOT_FOUND');
     }
@@ -35,6 +40,90 @@ export const openBoxForUser = async (userId, campaignId, boxId) => {
     const currentBalance = balance.totalEarned - balance.totalUsed;
     if (currentBalance <= 0) {
       throw new NoCouponsLeftError();
+    }
+
+    // Jika box sudah memiliki prizeId (pre-assign), gunakan hadiah itu langsung
+    if (boxToOpen.prizeId) {
+      if (!boxToOpen.prize || !boxToOpen.prize.isActive) {
+        throw new NoPrizesAvailableError();
+      }
+      if ((boxToOpen.prize.stockRemaining || 0) <= 0) {
+        throw new PrizeSelectionError('Prize stock depleted.');
+      }
+      const prize = boxToOpen.prize;
+
+      const updatedPrizeResult = await tx.prize.updateMany({
+        where: { id: prize.id, stockRemaining: { gt: 0 } },
+        data: { stockRemaining: { decrement: 1 } },
+      });
+      if (updatedPrizeResult.count === 0) {
+        throw new PrizeSelectionError();
+      }
+
+      const boxUpdateResult = await tx.box.updateMany({
+        where: { id: boxId, status: { not: 'opened' } },
+        data: { status: 'opened' },
+      });
+      if (boxUpdateResult.count === 0) {
+        throw new BoxAlreadyOpenedError();
+      }
+
+      const couponUpdateResult = await tx.userCouponBalance.updateMany({
+        where: { id: balance.id, totalUsed: balance.totalUsed },
+        data: { totalUsed: { increment: 1 } },
+      });
+      if (couponUpdateResult.count === 0) {
+        throw new NoCouponsLeftError();
+      }
+
+      const updatedBalance = await tx.userCouponBalance.findUnique({
+        where: { id: balance.id },
+        select: { totalEarned: true, totalUsed: true },
+      });
+
+      const openLog = await tx.userBoxOpenLog.create({
+        data: {
+          userId,
+          campaignId,
+          boxId,
+          prizeId: prize.id,
+        },
+        select: { id: true },
+      });
+
+      await tx.userPrize.create({
+        data: {
+          userId,
+          campaignId,
+          prizeId: prize.id,
+          userBoxOpenLogId: openLog.id,
+          status: 'unclaimed',
+        },
+      });
+
+      await logAudit({
+        actorType: 'user',
+        actorId: userId.toString(),
+        action: 'BOX_OPEN',
+        entityType: 'box',
+        entityId: boxId.toString(),
+        campaignId: campaignId.toString(),
+        details: {
+          prizeId: prize.id.toString(),
+          prizeName: prize.name,
+          prizeTier: prize.tier,
+          prizeType: prize.type,
+        },
+      });
+
+      return {
+        prize,
+        updatedBalance: {
+          totalEarned: updatedBalance.totalEarned,
+          totalUsed: updatedBalance.totalUsed,
+          balance: updatedBalance.totalEarned - updatedBalance.totalUsed,
+        },
+      };
     }
 
     const availablePrizes = await tx.prize.findMany({
@@ -87,6 +176,10 @@ export const openBoxForUser = async (userId, campaignId, boxId) => {
     let selectedPrize = null;
     // Jika masih ada hadiah utama dan masih ada kupon tersisa, gunakan probabilitas dinamis
     if (remainingMain > 0 && remainingOpens > 0 && mainPrizes.length > 0) {
+
+      console.log({ remainingMain, remainingOpens });
+
+
       const p = Math.min(1, remainingMain / remainingOpens);
       const roll = randomInt(1_000_000) / 1_000_000;
       if (roll <= p) {

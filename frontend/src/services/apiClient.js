@@ -45,7 +45,12 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error?.response?.status === 401) {
+    const status = error?.response?.status;
+    const url = error?.config?.url || '';
+    // Jangan redirect otomatis saat login gagal; biarkan halaman menampilkan error
+    const isAuthLogin = url.includes('/auth/login');
+
+    if (status === 401 && !isAuthLogin) {
       const isAdmin = error.config?.isAdminRequest;
       if (isAdmin) {
         localStorage.removeItem('adminAuthToken');

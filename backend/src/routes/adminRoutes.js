@@ -9,6 +9,7 @@ import {
   deleteCampaign,
   addPrizeToCampaign,
   generateBoxesForCampaign,
+  reassignPrizesForCampaign,
   createUserAndAssignCampaign,
   getUsersWithBalances,
   getUserById,
@@ -40,6 +41,7 @@ router.get('/campaigns/:id/boxes', protectAdmin, authorize('superadmin'), getCam
 router.post('/campaigns', protectAdmin, authorize('superadmin'), createCampaign);
 router.post('/campaigns/:id/prizes', protectAdmin, authorize('superadmin'), uploadImage.single('image'), addPrizeToCampaign);
 router.post('/campaigns/:id/boxes/generate', protectAdmin, authorize('superadmin'), generateBoxesForCampaign);
+router.post('/campaigns/:id/boxes/reassign', protectAdmin, authorize('superadmin'), reassignPrizesForCampaign);
 router.put('/campaigns/:id', protectAdmin, authorize('superadmin'), updateCampaign);
 router.delete('/campaigns/:id', protectAdmin, authorize('superadmin'), deleteCampaign);
 

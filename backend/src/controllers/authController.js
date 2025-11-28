@@ -43,7 +43,7 @@ export const login = async (req, res) => {
     const token = jwt.sign(
       tokenPayload,
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRATION || '1h' }
+      { expiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRATION || '8h' }
     );
 
     // Find the most recent campaign assigned to this user

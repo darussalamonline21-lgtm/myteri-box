@@ -4,6 +4,7 @@ import { createUser, updateUser, getUserById } from '../services/adminUserApi';
 const UserFormModal = ({ user, onClose, onSuccess }) => {
   const [formData, setFormData] = useState({
     name: '',
+    ownerName: '',
     storeCode: '',
     email: '',
     phone: '',
@@ -33,6 +34,7 @@ const UserFormModal = ({ user, onClose, onSuccess }) => {
       const userData = await getUserById(user.id);
       setFormData({
         name: userData.name || '',
+        ownerName: userData.ownerName || '',
         storeCode: userData.storeCode || '',
         email: userData.email || '',
         phone: userData.phone || '',
@@ -66,6 +68,9 @@ const UserFormModal = ({ user, onClose, onSuccess }) => {
       if (!formData.name.trim()) {
         throw new Error('Name is required');
       }
+      if (!formData.ownerName.trim()) {
+        throw new Error('Owner name is required');
+      }
       if (!formData.phone.trim()) {
         throw new Error('Phone is required');
       }
@@ -75,6 +80,7 @@ const UserFormModal = ({ user, onClose, onSuccess }) => {
 
       const payload = {
         name: formData.name.trim(),
+        ownerName: formData.ownerName.trim(),
         storeCode: formData.storeCode.trim() || null,
         email: formData.email.trim() || null,
         phone: formData.phone.trim(),
@@ -136,17 +142,31 @@ const UserFormModal = ({ user, onClose, onSuccess }) => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
-              Name *
-            </label>
-            <input
-              type="text"
-              name="name"
+          Name *
+        </label>
+        <input
+          type="text"
+          name="name"
               value={formData.name}
               onChange={handleChange}
               className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
               required
-            />
-          </div>
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-300 mb-1">
+          Owner Name *
+        </label>
+        <input
+          type="text"
+          name="ownerName"
+          value={formData.ownerName}
+          onChange={handleChange}
+          className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+          required
+        />
+      </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">

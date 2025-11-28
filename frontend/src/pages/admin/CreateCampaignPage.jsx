@@ -9,7 +9,6 @@ const CreateCampaignPage = () => {
     description: '',
     startDate: '',
     endDate: '',
-    minPurchasePerCoupon: '',
     isActive: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,7 +33,7 @@ const CreateCampaignPage = () => {
         description: formData.description.trim() || null,
         startDate: formData.startDate,
         endDate: formData.endDate,
-        minPurchasePerCoupon: Number(formData.minPurchasePerCoupon),
+        minPurchasePerCoupon: 0,
         isActive: formData.isActive,
       });
       navigate('/admin/dashboard');
@@ -84,7 +83,7 @@ const CreateCampaignPage = () => {
               value={formData.name}
               onChange={handleChange}
               className="w-full rounded-lg bg-gray-900 border border-gray-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="Mystery Box Bonanza"
+              placeholder="Magic Box Bonanza"
             />
           </div>
 
@@ -134,39 +133,18 @@ const CreateCampaignPage = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-semibold mb-2" htmlFor="minPurchasePerCoupon">
-                Minimum Purchase per Coupon (IDR) *
-              </label>
-              <input
-                id="minPurchasePerCoupon"
-                name="minPurchasePerCoupon"
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                value={formData.minPurchasePerCoupon}
-                onChange={handleChange}
-                className="w-full rounded-lg bg-gray-900 border border-gray-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="50000"
-              />
-            </div>
-
-
-            <div className="flex items-center mt-8 md:mt-10">
-              <input
-                id="isActive"
-                name="isActive"
-                type="checkbox"
-                checked={formData.isActive}
-                onChange={handleChange}
-                className="h-5 w-5 rounded border-gray-600 bg-gray-900 text-green-500 focus:ring-green-500"
-              />
-              <label htmlFor="isActive" className="ml-3 text-sm font-semibold">
-                Campaign is active on creation
-              </label>
-            </div>
+          <div className="flex items-center">
+            <input
+              id="isActive"
+              name="isActive"
+              type="checkbox"
+              checked={formData.isActive}
+              onChange={handleChange}
+              className="h-5 w-5 rounded border-gray-600 bg-gray-900 text-green-500 focus:ring-green-500"
+            />
+            <label htmlFor="isActive" className="ml-3 text-sm font-semibold">
+              Campaign is active on creation
+            </label>
           </div>
 
           <button

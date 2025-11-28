@@ -59,6 +59,36 @@ const getProgressPalette = (value) => {
     };
 };
 
+const ROOM_UNLOCK_THRESHOLD = parseInt(import.meta.env.VITE_ROOM_UNLOCK_THRESHOLD || '50', 10) || 50;
+
+const deriveRoomsMeta = (boxes, roomSize, unlockThreshold) => {
+    if (!Array.isArray(boxes) || boxes.length === 0 || !roomSize) return [];
+    const totalRooms = Math.ceil(boxes.length / roomSize);
+    const rooms = [];
+
+    for (let i = 0; i < totalRooms; i++) {
+        const startIndex = i * roomSize;
+        const roomBoxes = boxes.slice(startIndex, startIndex + roomSize);
+        const openedCount = roomBoxes.filter(box => box.status === 'opened').length;
+        const remainingBoxes = roomBoxes.length - openedCount;
+        const prevRoom = rooms[i - 1];
+        const isUnlocked = i === 0
+            ? true
+            : Boolean(prevRoom?.isUnlocked && prevRoom.openedCount >= unlockThreshold);
+
+        rooms.push({
+            roomNumber: i + 1,
+            startBox: startIndex + 1,
+            endBox: startIndex + roomBoxes.length,
+            totalBoxes: roomBoxes.length,
+            openedCount,
+            remainingBoxes,
+            isUnlocked,
+        });
+    }
+    return rooms;
+};
+
 const DashboardPage = () => {
     const navigate = useNavigate();
     const currentCampaignId = localStorage.getItem('activeCampaignId');
@@ -79,7 +109,7 @@ const DashboardPage = () => {
     const [displayedBoxes, setDisplayedBoxes] = useState([]);
     const [isLoadingBoxes, setIsLoadingBoxes] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [totalPages, setTotalPages] = useState(0);
+    const [roomsMeta, setRoomsMeta] = useState([]);
 
     // State untuk hasil pembukaan kotak
     const [wonPrize, setWonPrize] = useState(null);
@@ -135,10 +165,15 @@ const DashboardPage = () => {
         if (!silent) setIsLoadingBoxes(true);
         try {
             const response = await apiClient.get(`/campaigns/${currentCampaignId}/boxes`);
-            const incomingBoxes = response.data;
+            const payload = response.data;
+            const incomingBoxes = Array.isArray(payload) ? payload : (payload?.boxes || []);
+            const incomingRooms = Array.isArray(payload?.rooms) ? payload.rooms : null;
             setAllBoxes(prev => boxesEqual(prev, incomingBoxes) ? prev : incomingBoxes);
-            const incomingTotalPages = Math.ceil(incomingBoxes.length / boxesPerRoom);
-            setTotalPages(prev => prev === incomingTotalPages ? prev : incomingTotalPages);
+            if (incomingRooms) {
+                setRoomsMeta(incomingRooms);
+            } else {
+                setRoomsMeta(deriveRoomsMeta(incomingBoxes, boxesPerRoom, ROOM_UNLOCK_THRESHOLD));
+            }
         } catch (err) {
             const status = err?.response?.status;
             const backendMsg = err?.response?.data?.message;
@@ -173,14 +208,24 @@ const DashboardPage = () => {
         return () => clearInterval(interval);
     }, [currentCampaignId, selectedRoom, fetchBoxes]);
 
+    // Jika room yang dipilih terkunci (atau hilang), reset ke daftar room
+    useEffect(() => {
+        if (!selectedRoom) return;
+        const room = roomsMeta.find(r => r.roomNumber === selectedRoom);
+        if (!room || !room.isUnlocked) {
+            setSelectedRoom(null);
+            setCurrentPage(1);
+        }
+    }, [roomsMeta, selectedRoom]);
+
     // Effect untuk mengelola paginasi
     useEffect(() => {
         if (allBoxes.length > 0 && selectedRoom) {
-            const startIndex = (currentPage - 1) * boxesPerRoom;
-            const endIndex = startIndex + boxesPerRoom;
-            setDisplayedBoxes(allBoxes.slice(startIndex, endIndex));
+            setDisplayedBoxes(allBoxes.filter(box => box.roomNumber === selectedRoom));
+        } else {
+            setDisplayedBoxes([]);
         }
-    }, [allBoxes, currentPage, selectedRoom, boxesPerRoom]);
+    }, [allBoxes, selectedRoom]);
 
     // Jika campaign nonaktif, pastikan tidak ada room yang dipilih
     useEffect(() => {
@@ -225,6 +270,7 @@ const DashboardPage = () => {
             // Tampilkan hadiah segera setelah respon agar lebih responsif
             setWonPrize(response.data.prize);
             setOpeningBoxId(null);
+            fetchBoxes({ silent: true });
 
         } catch (err) {
             const status = err?.response?.status;
@@ -247,10 +293,12 @@ const DashboardPage = () => {
             setSelectedRoom(null);
             return;
         }
+        const room = roomsMeta.find(r => r.roomNumber === roomNumber);
+        if (!room || !room.isUnlocked) return;
         setCurrentPage(roomNumber);
         setSelectedRoom(roomNumber);
     };
-    const handleBackToRooms = () => { setSelectedRoom(null); };
+    const handleBackToRooms = () => { setSelectedRoom(null); setCurrentPage(1); };
     const handleLogout = () => {
         localStorage.clear();
         navigate('/login');
@@ -263,43 +311,43 @@ const DashboardPage = () => {
     // Tampilan loading dan error
     if (isLoadingSummary && !summary) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#1a0b2e] via-[#0f0518] to-[#1a0b2e]">
+            <div className="flex items-center justify-center min-h-screen bg-amber-50">
                 <div className="text-center">
                     <motion.div
-                        className="w-16 h-16 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"
+                        className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-3"
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                     />
-                    <p className="text-yellow-200 font-semibold">Loading Dashboard...</p>
+                    <p className="text-sm text-slate-700 font-semibold">Loading dashboard...</p>
                 </div>
             </div>
         );
     }
     if (error) {
         return (
-            <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-[#1a0b2e] via-[#0f0518] to-[#1a0b2e] p-8">
+            <div className="flex items-center justify-center min-h-screen bg-slate-50 p-8">
                 <motion.div
-                    className="backdrop-blur-xl bg-red-900/20 border-2 border-red-500/30 text-red-400 px-6 py-8 rounded-2xl text-center max-w-md w-full space-y-4"
-                    initial={{ scale: 0.9, opacity: 0 }}
+                    className="bg-white border border-slate-200 text-slate-900 px-6 py-8 rounded-2xl text-center max-w-md w-full space-y-4 shadow-sm"
+                    initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                 >
-                    <div className="text-5xl font-black mb-2">:(</div>
+                    <div className="text-5xl font-semibold mb-2 text-rose-500">:(</div>
                     <p className="text-lg font-semibold">Terjadi kendala</p>
-                    <p className="text-sm text-red-200/90">{error}</p>
+                    <p className="text-sm text-slate-600">{error}</p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
                         <motion.button
                             onClick={() => window.location.reload()}
-                            className="px-4 py-2 rounded-xl bg-red-500/20 border border-red-400/50 text-red-100 font-bold shadow-[0_0_18px_rgba(248,113,113,0.35)]"
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
+                            className="px-4 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 font-semibold hover:bg-rose-100 transition"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
                         >
                             Coba Muat Ulang
                         </motion.button>
                         <motion.button
                             onClick={() => { localStorage.clear(); navigate('/login'); }}
-                            className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-yellow-100 font-bold"
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
+                            className="px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 font-semibold hover:bg-slate-200 transition"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
                         >
                             Kembali ke Login
                         </motion.button>
@@ -315,50 +363,54 @@ const DashboardPage = () => {
     const couponProgress = Math.min(100, Math.max(0, (couponsUsed / (totalCouponsEarned || 1)) * 100));
     const progressPalette = getProgressPalette(couponProgress);
     const remainingCoupons = summary?.couponBalance?.balance ?? 0;
+    const isOnRoomList = !selectedRoom;
+    const unlockedRooms = roomsMeta.filter(room => room.isUnlocked);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-[#1a0b2e] via-[#0f0518] to-[#1a0b2e] flex justify-center font-sans relative overflow-hidden">
-            {/* Radial Spotlights */}
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl"></div>
-            <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-yellow-600/10 rounded-full blur-3xl"></div>
-
-            <div className="w-full max-w-md min-h-screen flex flex-col relative pb-28">
+        <div
+            className="min-h-screen bg-white text-slate-900 flex justify-center font-sans"
+            style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url('/patterns/patern-logo.svg')",
+                backgroundRepeat: "no-repeat, space",
+                backgroundSize: "auto, 320px 120px",
+                backgroundPosition: "center, center"
+            }}
+        >
+            <div className="w-full max-w-md min-h-screen flex flex-col relative pb-24 px-3">
                 {/* Prize Modal */}
                 <AnimatePresence>
                     {(wonPrize || openBoxError) && (
                         <motion.div
-                            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+                            className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                         >
                             <motion.div
-                                className="bg-black/80 border-2 border-yellow-400/40 p-8 rounded-3xl shadow-[0_0_30px_rgba(251,191,36,0.35)] text-center w-full max-w-sm relative overflow-hidden"
-                                initial={{ scale: 0.8, rotate: -10 }}
-                                animate={{ scale: 1, rotate: 0 }}
-                                exit={{ scale: 0.8, rotate: 10 }}
-                                transition={{ type: "spring", stiffness: 200, damping: 20 }}
+                                className="bg-white border border-amber-200 p-6 md:p-8 rounded-2xl shadow-xl text-center w-full max-w-sm relative overflow-hidden"
+                                initial={{ scale: 0.96, y: 12 }}
+                                animate={{ scale: 1, y: 0 }}
+                                exit={{ scale: 0.96, y: 12 }}
+                                transition={{ type: "spring", stiffness: 220, damping: 22 }}
                             >
-                                <div className="absolute -top-20 -right-20 w-40 h-40 bg-yellow-400/30 rounded-full blur-3xl"></div>
 
                                 {wonPrize ? (
                                     <>
                                         <motion.div
-                                            className="mb-4 mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-yellow-200 via-yellow-400 to-amber-500 text-purple-900 font-black flex items-center justify-center shadow-[0_0_35px_rgba(251,191,36,0.45)]"
-                                            animate={{ scale: [0.95, 1.05, 0.98, 1], rotate: [0, -3, 3, 0] }}
-                                            transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                                            className="mb-4 mx-auto w-14 h-14 rounded-xl bg-amber-500 text-white font-semibold flex items-center justify-center"
+                                            animate={{ scale: [0.98, 1.02, 0.98], opacity: [0.92, 1, 0.92] }}
+                                            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
                                         >
                                             WIN
                                         </motion.div>
-                                        <h2 className="text-3xl font-black bg-gradient-to-r from-yellow-400 via-yellow-200 to-yellow-600 bg-clip-text text-transparent mb-3">Selamat!</h2>
-                                        <p className="text-gray-300 text-sm mb-4 font-semibold">Anda mendapat:</p>
+                                        <h2 className="text-xl md:text-2xl font-semibold text-slate-900 mb-2">Selamat!</h2>
+                                        <p className="text-sm text-slate-500 mb-3 font-medium">Anda mendapat:</p>
                                         <motion.div
-                                            className="mx-auto mb-4 w-40 h-40 rounded-2xl overflow-hidden relative backdrop-blur-lg bg-gradient-to-br from-white/10 via-yellow-200/10 to-amber-400/10 border border-white/10 shadow-[0_10px_50px_rgba(0,0,0,0.45)]"
-                                            initial={{ scale: 0.9, opacity: 0 }}
+                                            className="mx-auto mb-4 w-40 h-40 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shadow-sm"
+                                            initial={{ scale: 0.98, opacity: 0 }}
                                             animate={{ scale: 1, opacity: 1 }}
-                                            transition={{ type: "spring", stiffness: 260, damping: 18, delay: 0.1 }}
+                                            transition={{ type: "spring", stiffness: 240, damping: 20, delay: 0.05 }}
                                         >
-                                            <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/30 pointer-events-none" />
                                             {wonPrize.imageUrl ? (
                                                 <img
                                                     src={resolveImageUrl(wonPrize.imageUrl)}
@@ -368,47 +420,44 @@ const DashboardPage = () => {
                                                     decoding="async"
                                                 />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center text-yellow-200/80 text-xs font-semibold tracking-wide">
+                                                <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs font-semibold tracking-wide">
                                                     Foto hadiah belum tersedia
                                                 </div>
                                             )}
-                                            <div className="absolute bottom-2 right-2 px-2 py-1 rounded-full text-[10px] font-semibold text-purple-950 bg-gradient-to-r from-yellow-300 to-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]">
+                                            <div className="absolute bottom-2 right-2 px-2 py-1 rounded-full text-[10px] font-semibold text-white bg-amber-500 shadow-sm">
                                                 {wonPrize.tier} Tier
                                             </div>
                                         </motion.div>
-                                        <p className="text-2xl font-black text-white mb-2">{wonPrize.name}</p>
-
-                                        {/* Context Sisa Kupon */}
-                                        <p className="text-yellow-200/70 text-xs mb-3 font-medium">
+                                        <p className="text-lg md:text-xl font-semibold text-slate-900 mb-1">{wonPrize.name}</p>
+                                        <p className="text-xs text-slate-600 font-medium mb-1">
                                             Sisa Kupon: {remainingCoupons}
                                         </p>
-                                        {remainingCoupons > 0 && (
-                                            <p className="text-[11px] text-yellow-300/80 font-semibold mb-2">
-                                                'buka box lainya, jika kupon masih tersedia.'
-                                            </p>
-                                        )}
                                     </>
                                 ) : (
                                     <>
-                                        <div className="text-6xl font-black mb-4">!</div>
-                                        <h2 className="text-2xl font-black text-red-400 mb-3">Oops!</h2>
-                                        <p className="text-gray-300 text-sm mb-8">{openBoxError}</p>
+                                        <div className="text-4xl font-bold mb-2 text-amber-500">!</div>
+                                        <h2 className="text-base md:text-lg font-semibold text-slate-900 mb-2">Tidak bisa membuka box</h2>
+                                        <p className="text-sm text-slate-600 mb-4">{openBoxError}</p>
+                                        <div className="border border-slate-200 rounded-xl p-4 space-y-2 text-left bg-slate-50">
+                                            <p className="text-sm text-slate-700 font-semibold">Tips singkat</p>
+                                            <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
+                                                <li>Cek sisa kupon sebelum buka box.</li>
+                                                <li>Pilih room lain jika box di room ini sudah habis.</li>
+                                                <li>Lihat riwayat hadiah di menu "Hadiah Saya".</li>
+                                                <li>Gunakan kupon sebelum program berakhir supaya tidak hangus.</li>
+                                            </ul>
+                                        </div>
                                     </>
                                 )}
                                 <motion.button
                                     onClick={closeModal}
-                                    className="relative w-full py-3 bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 text-purple-950 rounded-xl font-black text-lg overflow-hidden shadow-lg"
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                                    className="mt-6 w-full py-3 bg-amber-500 text-white rounded-lg font-semibold shadow-sm hover:bg-amber-600 transition"
+                                    whileTap={{ scale: 0.98 }}
                                 >
-                                    <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent"></div>
-                                    <span className="relative z-10">
-                                        {wonPrize
-                                            ? (remainingCoupons > 0 ? 'Buka Box Lain!' : 'Ambil Hadiah! 🎁')
-                                            : 'Tutup'
-                                        }
-                                    </span>
+                                    {wonPrize
+                                        ? (remainingCoupons > 0 ? 'Buka box lain' : 'Tutup')
+                                        : 'Tutup'
+                                    }
                                 </motion.button>
                             </motion.div>
                         </motion.div>
@@ -419,14 +468,14 @@ const DashboardPage = () => {
                 <AnimatePresence>
                     {showInfo && (
                         <motion.div
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center"
+                        className="fixed inset-0 bg-amber-900/30 backdrop-blur-sm z-50 flex items-end justify-center"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={closeInfo}
                         >
                             <motion.div
-                                className="w-full max-w-md bg-[#0c0714] text-yellow-100 rounded-t-3xl border-t-2 border-yellow-400/30 p-6 shadow-[0_-8px_30px_rgba(0,0,0,0.45)] space-y-4"
+                                className="w-full max-w-md bg-white text-slate-900 rounded-t-3xl border border-amber-200 p-6 shadow-xl space-y-4"
                                 initial={{ y: 300 }}
                                 animate={{ y: 0 }}
                                 exit={{ y: 300 }}
@@ -435,39 +484,39 @@ const DashboardPage = () => {
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-sm text-yellow-300/70 font-semibold">Tentang Program</p>
-                                        <h3 className="text-2xl font-black text-white">Magic Box Loyalty</h3>
+                                        <p className="text-sm text-slate-500 font-medium">Tentang Program</p>
+                                        <h3 className="text-2xl font-semibold text-slate-900">Magic Box Loyalty</h3>
                                     </div>
                                     <button
                                         onClick={closeInfo}
-                                        className="p-2 rounded-full hover:bg-white/10 text-yellow-100"
+                                        className="p-2 rounded-full hover:bg-slate-100 text-slate-500"
                                         aria-label="Tutup"
                                     >
                                         <X className="w-5 h-5" />
                                     </button>
                                 </div>
 
-                                <div className="bg-white/5 border border-yellow-400/15 rounded-xl p-4 space-y-2">
-                                    <p className="text-sm text-yellow-200 font-semibold">Cara Main</p>
-                                    <ul className="text-xs text-gray-200 space-y-1 list-disc list-inside">
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                                    <p className="text-sm text-amber-900 font-semibold">Cara Main</p>
+                                    <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
                                         <li>Kumpulkan kupon dari transaksi yang memenuhi syarat.</li>
                                         <li>Pilih room, pilih box yang masih available, lalu buka.</li>
                                         <li>Lihat hadiah yang muncul; stats & kupon terupdate otomatis.</li>
                                     </ul>
                                 </div>
 
-                                <div className="bg-white/5 border border-yellow-400/15 rounded-xl p-4 space-y-2">
-                                    <p className="text-sm text-yellow-200 font-semibold">Algoritma Hadiah</p>
-                                    <ul className="text-xs text-gray-200 space-y-1 list-disc list-inside">
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                                    <p className="text-sm text-amber-900 font-semibold">Algoritma Hadiah</p>
+                                    <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
                                         <li>Hadiah diundi otomatis oleh sistem, termasuk hadiah utama.</li>
                                         <li>Setiap buka box diproses mesin supaya adil dan tidak bisa dipilih manual.</li>
                                         <li>Hadiah yang stoknya habis/tidak aktif tidak ikut diundi.</li>
                                     </ul>
                                 </div>
 
-                                <div className="bg-white/5 border border-yellow-400/15 rounded-xl p-4 space-y-2">
-                                    <p className="text-sm text-yellow-200 font-semibold">Tips Singkat</p>
-                                    <ul className="text-xs text-gray-200 space-y-1 list-disc list-inside">
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                                    <p className="text-sm text-amber-900 font-semibold">Tips Singkat</p>
+                                    <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
                                         <li>Cek sisa kupon sebelum buka box.</li>
                                         <li>Pilih room lain jika box di room ini sudah habis.</li>
                                         <li>Lihat riwayat hadiah di menu "Hadiah Saya".</li>
@@ -483,14 +532,14 @@ const DashboardPage = () => {
                 <AnimatePresence>
                     {showProfile && (
                         <motion.div
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center"
+                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-end justify-center"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={closeProfile}
                         >
                             <motion.div
-                                className="w-full max-w-md bg-[#0c0714] text-yellow-100 rounded-t-3xl border-t-2 border-yellow-400/30 p-6 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]"
+                                className="w-full max-w-md bg-white text-slate-900 rounded-t-3xl border border-slate-200 p-6 shadow-xl"
                                 initial={{ y: 300 }}
                                 animate={{ y: 0 }}
                                 exit={{ y: 300 }}
@@ -499,24 +548,24 @@ const DashboardPage = () => {
                             >
                                 <div className="flex items-start justify-between mb-4 gap-3">
                                     <div>
-                                        <p className="text-sm text-yellow-300/70 font-semibold">Profil Toko</p>
-                                        <h3 className="text-2xl font-black text-white">
+                                        <p className="text-sm text-slate-500 font-medium">Profil Toko</p>
+                                        <h3 className="text-2xl font-semibold text-slate-900">
                                             {summary?.user?.name || 'Toko'}
                                         </h3>
-                                        <p className="text-xs text-gray-400 mt-1">Owner: {summary?.user?.ownerName || '-'}</p>
-                                        <p className="text-xs text-gray-500">Store Code: {summary?.user?.storeCode || '-'}</p>
+                                        <p className="text-xs text-slate-500 mt-1">Owner: {summary?.user?.ownerName || '-'}</p>
+                                        <p className="text-xs text-slate-500">Username: {summary?.user?.storeCode || '-'}</p>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={handleLogout}
-                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-full bg-red-500/15 border border-red-400/40 text-red-200 hover:bg-red-500/25 transition-colors"
+                                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold rounded-full bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition-colors"
                                         >
                                             <LogOut className="w-4 h-4" />
                                             Logout
                                         </button>
                                         <button
                                             onClick={closeProfile}
-                                            className="p-2 rounded-full hover:bg-white/10 text-yellow-100"
+                                            className="p-2 rounded-full hover:bg-slate-100 text-slate-500"
                                             aria-label="Tutup"
                                         >
                                             <X className="w-5 h-5" />
@@ -525,7 +574,7 @@ const DashboardPage = () => {
                                 </div>
 
                                 <div className="space-y-3 mb-4">
-                                    <div className="flex items-center justify-between bg-white/5 border border-yellow-400/10 rounded-xl px-4 py-3">
+                                <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                                         <div>
                                             <p className="text-xs text-gray-400">Total Kupon Diterima</p>
                                             <p className="text-lg font-black text-white">{summary?.couponBalance?.totalEarned ?? 0}</p>
@@ -535,14 +584,14 @@ const DashboardPage = () => {
                                             <p className="text-lg font-black text-red-300 text-right">{summary?.couponBalance?.totalUsed ?? 0}</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-center justify-between bg-gradient-to-r from-yellow-500/20 via-yellow-400/10 to-yellow-600/20 border border-yellow-400/40 rounded-xl px-4 py-3">
+                                    <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
                                         <div>
-                                            <p className="text-xs text-yellow-200">Sisa Kupon</p>
-                                            <p className="text-2xl font-black text-yellow-300">
+                                            <p className="text-xs text-slate-600">Sisa Kupon</p>
+                                            <p className="text-2xl font-semibold text-slate-900">
                                                 {summary?.couponBalance?.balance ?? 0}
                                             </p>
                                         </div>
-                                        <div className="text-right text-xs text-yellow-100/80">
+                                        <div className="text-right text-xs text-slate-600">
                                             <p>Total Box Dibuka: {summary?.stats?.totalBoxesOpened ?? 0}</p>
                                             <p>Total Prize: {summary?.stats?.totalPrizesWon ?? 0}</p>
                                         </div>
@@ -556,66 +605,50 @@ const DashboardPage = () => {
 
                 {/* Header Card */}
                 <motion.div
-                    className="p-4"
+                    className="p-3"
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
                 >
-                    <div className="bg-black/70 border-2 border-yellow-400/30 rounded-2xl p-5 shadow-[0_0_24px_rgba(251,191,36,0.25)] relative overflow-hidden">
-                        <div className="flex justify-between items-start mb-4 relative z-10">
-                            <div>
-                                <h1 className="text-2xl font-black bg-gradient-to-r from-yellow-400 via-yellow-200 to-yellow-600 bg-clip-text text-transparent drop-shadow-lg">
+                    <div className="bg-gradient-to-r from-amber-400 via-amber-300 to-amber-400 border border-amber-400 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+                        <div className="flex flex-wrap justify-between items-start mb-3 relative z-10 gap-3">
+                            <div className="space-y-1.5">
+                                <h1 className="text-lg md:text-xl font-semibold text-slate-900 leading-tight">
                                     {summary?.user?.storeName || summary?.user?.name || 'Toko Pemenang'}
                                 </h1>
-                                <div className="relative inline-block mt-2 px-4 py-1.5 rounded-full bg-gradient-to-r from-yellow-400 to-yellow-600 overflow-hidden">
-                                    <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent"></div>
-                                    <div className="relative flex items-center gap-2">
-                                        <span className="text-purple-950 text-xs font-bold">Kupon:</span>
-                                        <span className="text-purple-950 font-black text-lg">{summary?.couponBalance?.balance || 0}</span>
-                                    </div>
+                                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900 text-white text-sm font-semibold border border-slate-800 leading-none">
+                                    <span className="leading-none">Kupon</span>
+                                    <span className="text-base font-bold leading-none">{summary?.couponBalance?.balance || 0}</span>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <div className="text-yellow-400 font-black text-lg leading-none tracking-widest drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">MAGIC</div>
-                                <div className="text-white font-black text-2xl leading-none tracking-widest drop-shadow-lg">BOX</div>
+                            <div className="text-right space-y-1 self-start">
+                                <div className="text-[11px] uppercase tracking-[0.14em] text-amber-700 font-semibold leading-tight">Program</div>
+                                <div className="text-base font-semibold text-slate-900 leading-tight">Magic Box</div>
                             </div>
                         </div>
 
                         {/* Progress Bar */}
-                        <div className="relative z-10 space-y-3">
-                            <div className="text-xs text-yellow-100/90">Kupon Dipakai</div>
+                        <div className="relative z-10 space-y-2">
+                            <div className="text-xs text-slate-600">Kupon dipakai</div>
                             <div
-                                className="h-5 backdrop-blur-md rounded-full overflow-hidden relative"
-                                style={{
-                                    background: 'rgba(255,255,255,0.04)',
-                                    border: `2px solid ${progressPalette.track}`,
-                                    boxShadow: `0 0 22px ${progressPalette.glow}`,
-                                }}
+                                className="h-5 rounded-full overflow-hidden bg-amber-50 border border-amber-200"
+                                style={{ boxShadow: `0 0 0 ${progressPalette.track}` }}
                             >
                                 <motion.div
-                                    className="h-full relative overflow-hidden"
+                                    className="h-full flex items-center px-2 text-[11px] font-semibold text-slate-900"
                                     style={{
                                         background: `linear-gradient(90deg, ${progressPalette.start}, ${progressPalette.end})`,
-                                        boxShadow: `0 0 30px ${progressPalette.glow}`,
+                                        boxShadow: `0 0 12px ${progressPalette.glow}`,
+                                        color: '#0f172a'
                                     }}
                                     initial={{ width: 0 }}
                                     animate={{ width: `${couponProgress}%` }}
                                     transition={{ duration: 1, ease: "easeOut" }}
                                 >
-                                    <motion.div
-                                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent"
-                                        animate={{ x: ['-200%', '200%'] }}
-                                        transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-                                    />
-                                </motion.div>
-                                <div className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white drop-shadow-md">
                                     {couponsUsed}/{totalCouponsEarned || 0}
-                                </div>
+                                </motion.div>
                             </div>
-
                         </div>
-
-                        <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-yellow-400/20 rounded-full blur-3xl"></div>
                     </div>
                 </motion.div>
 
@@ -623,74 +656,71 @@ const DashboardPage = () => {
                 <div className="px-4 mb-6">
                     <motion.button
                         onClick={() => navigate('/my-prizes')}
-                        className="relative w-full py-4 bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 rounded-xl text-purple-950 font-black text-lg shadow-[0_0_30px_rgba(251,191,36,0.5)] overflow-hidden"
+                        className="w-full py-3.5 bg-amber-500 rounded-xl text-white font-semibold text-base shadow-sm hover:bg-amber-600 transition"
                         whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         transition={{ type: "spring", stiffness: 400, damping: 15 }}
                     >
-                        <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent"></div>
                         <span className="relative z-10">Hadiah Saya</span>
                     </motion.button>
-                    <div className="h-[2px] bg-gradient-to-r from-transparent via-yellow-400 to-transparent mt-6 w-full shadow-[0_0_15px_rgba(250,204,21,0.6)]"></div>
+                    <div className="h-[2px] bg-amber-200 mt-6 w-full"></div>
                 </div>
 
                 {/* Main Content */}
                 <div className="px-4 flex-1 pb-6">
                     {isCampaignInactive ? (
-                        <div className="text-center p-8 space-y-3 bg-white/5 border border-yellow-400/10 rounded-2xl">
-                            <p className="text-lg font-black text-yellow-300">Program tidak aktif</p>
-                            <p className="text-sm text-gray-300">{campaignInactiveReason}</p>
-                            <p className="text-xs text-gray-400">Riwayat hadiah tetap bisa dilihat lewat tombol di atas.</p>
+                        <div className="text-center p-8 space-y-3 bg-white border border-amber-200 rounded-2xl shadow-sm">
+                            <p className="text-lg font-semibold text-amber-900">Program tidak aktif</p>
+                            <p className="text-sm text-slate-700">{campaignInactiveReason}</p>
+                            <p className="text-xs text-slate-600">Riwayat hadiah tetap bisa dilihat lewat tombol di atas.</p>
                         </div>
                     ) : isLoadingBoxes ? (
                         <div className="text-center p-10">
                             <motion.div
-                                className="w-12 h-12 border-4 border-yellow-400 border-t-transparent rounded-full mx-auto mb-4"
+                                className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full mx-auto mb-4"
                                 animate={{ rotate: 360 }}
                                 transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                             />
-                            <p className="text-yellow-200">Loading boxes...</p>
+                            <p className="text-slate-700">Loading boxes...</p>
                         </div>
                     ) : (
                         !selectedRoom ? (
-                            <div className="flex flex-col space-y-6 pb-6">
-                                {Array.from({ length: Math.max(1, totalPages) }, (_, index) => {
-                                    const roomNumber = index + 1;
-                                    const startBox = (roomNumber - 1) * boxesPerRoom + 1;
-                                    const endBox = Math.min(roomNumber * boxesPerRoom, allBoxes.length);
-                                    const roomBoxes = allBoxes.slice((roomNumber - 1) * boxesPerRoom, roomNumber * boxesPerRoom);
-                                    const remainingBoxes = roomBoxes.filter(box => box.status === 'available').length;
-
-                                    return (
+                            <div className="flex flex-col space-y-4 pb-6">
+                                {unlockedRooms.length === 0 ? (
+                                    <div className="text-center py-12 text-sm text-slate-600">
+                                        Room belum tersedia. Buka box yang ada untuk membuka room berikutnya.
+                                    </div>
+                                ) : (
+                                    unlockedRooms.map((room) => (
                                         <RoomCard
-                                            key={roomNumber}
-                                            roomNumber={roomNumber}
-                                            startBox={startBox}
-                                            endBox={endBox}
-                                            remainingBoxes={remainingBoxes}
-                                            totalBoxes={boxesPerRoom}
-                                            onClick={() => handleSelectRoom(roomNumber)}
+                                            key={room.roomNumber}
+                                            roomNumber={room.roomNumber}
+                                            startBox={room.startBox}
+                                            endBox={room.endBox}
+                                            remainingBoxes={room.remainingBoxes}
+                                            totalBoxes={room.totalBoxes}
+                                            onClick={() => handleSelectRoom(room.roomNumber)}
                                         />
-                                    );
-                                })}
+                                    ))
+                                )}
                             </div>
                         ) : (
                             <>
-                                <div className="px-1 mb-3 sticky top-2 z-20">
-                                    <div className="flex items-center justify-between gap-3 bg-black/60 border border-yellow-400/20 rounded-xl px-3 py-2 shadow-[0_6px_18px_rgba(0,0,0,0.3)]">
+                                <div className="px-1 mb-3">
+                                    <div className="flex items-center justify-between gap-2 bg-white border border-amber-200 rounded-xl px-3 py-2 shadow-sm">
                                         <motion.button
                                             type="button"
                                             onClick={handleBackToRooms}
-                                            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-purple-600 via-purple-500 to-cyan-300 px-3 py-1.5 text-xs font-bold text-white shadow-[0_6px_18px_rgba(124,58,237,0.45)] border border-white/10"
-                                            whileHover={{ scale: 1.05 }}
-                                            whileTap={{ scale: 0.95 }}
+                                            className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800 border border-slate-200"
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.96 }}
                                         >
                                             <ArrowLeft className="w-4 h-4" />
-                                            <span>Back to Rooms</span>
+                                            <span>Kembali ke Room</span>
                                         </motion.button>
                                         <div className="flex-1 text-right ml-auto">
-                                            <div className="text-xs font-black bg-gradient-to-r from-orange-400 via-amber-300 to-yellow-500 bg-clip-text text-transparent drop-shadow-md inline-block whitespace-nowrap truncate max-w-[140px]">
-                                                End Year Javamas {selectedRoom}
+                                            <div className="text-[10px] sm:text-[11px] font-semibold text-slate-600 leading-tight whitespace-nowrap truncate max-w-[180px]">
+                                                Magic Box {selectedRoom}
                                             </div>
                                         </div>
                                     </div>
@@ -700,19 +730,23 @@ const DashboardPage = () => {
                                         <p className="text-gray-500">No boxes in this room.</p>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-4 gap-3">
-                                        {displayedBoxes.map((box, idx) => (
-                                            <MysteryBox
-                                                key={box.id}
-                                                box={box}
-                                                index={(currentPage - 1) * boxesPerRoom + idx + 1}
-                                                onClick={handleOpenBox}
-                                                isOpenedByMe={box.openedBy?.userId === currentUserId}
-                                                isOpening={openingBoxId === box.id}
-                                                brandLogo={brandLogo}
-                                                openedBrandLogo={openedBrandLogo}
-                                            />
-                                        ))}
+                                    <div className="grid grid-cols-4 gap-2.5">
+                                        {displayedBoxes.map((box, idx) => {
+                                            const roomMeta = roomsMeta.find(r => r.roomNumber === selectedRoom);
+                                            const boxIndex = (roomMeta?.startBox ?? 1) + idx;
+                                            return (
+                                                <MysteryBox
+                                                    key={box.id}
+                                                    box={box}
+                                                    index={boxIndex}
+                                                    onClick={handleOpenBox}
+                                                    isOpenedByMe={box.openedBy?.userId === currentUserId}
+                                                    isOpening={openingBoxId === box.id}
+                                                    brandLogo={brandLogo}
+                                                    openedBrandLogo={openedBrandLogo}
+                                                />
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </>
@@ -721,32 +755,42 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Bottom Navigation minimized for safer taps */}
-                <div className="fixed bottom-0 w-full max-w-md px-4 pb-[max(12px,env(safe-area-inset-bottom))] z-40">
-                        <div className="flex items-center justify-between gap-3 rounded-2xl bg-black/80 border border-yellow-400/20 shadow-[0_-3px_14px_rgba(0,0,0,0.35)] px-3 py-2">
+                <div className="fixed bottom-0 inset-x-0 z-40 pb-[max(12px,env(safe-area-inset-bottom))] flex justify-center">
+                    <div className="w-full max-w-md px-3">
+                        <div className="flex items-center justify-between gap-2 rounded-2xl bg-white border border-amber-200 shadow-sm px-3 py-2">
+                            <motion.button
+                                onClick={openInfo}
+                                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-amber-700 hover:text-amber-900 px-3 py-2 rounded-xl hover:bg-amber-100"
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <Menu className="w-4 h-4" />
+                                <span>Info</span>
+                            </motion.button>
                         <motion.button
-                            onClick={openInfo}
-                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-300 hover:text-yellow-300 px-3 py-2 rounded-xl hover:bg-white/5"
+                            onClick={() => {
+                                setSelectedRoom(null);
+                                setCurrentPage(1);
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className={`inline-flex items-center gap-1.5 text-[13px] font-semibold px-3 py-2 rounded-xl border transition-colors ${
+                                isOnRoomList
+                                    ? 'bg-amber-500 border-amber-500 text-white'
+                                    : 'bg-white border-amber-200 text-amber-800'
+                            }`}
                             whileTap={{ scale: 0.95 }}
-                        >
-                            <Menu className="w-4 h-4" />
-                            <span>Info</span>
-                        </motion.button>
-                        <motion.button
-                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-yellow-300 px-3 py-2 rounded-xl bg-white/5 border border-yellow-300/30"
-                            whileTap={{ scale: 0.95 }}
-                            disabled
                         >
                             <Home className="w-4 h-4" />
                             <span>Home</span>
                         </motion.button>
-                        <motion.button
-                            onClick={openProfile}
-                            className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-300 hover:text-red-300 px-3 py-2 rounded-xl hover:bg-white/5"
-                            whileTap={{ scale: 0.95 }}
-                        >
-                            <User className="w-4 h-4" />
-                            <span>Profil</span>
-                        </motion.button>
+                            <motion.button
+                                onClick={openProfile}
+                                className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-amber-700 hover:text-amber-900 px-3 py-2 rounded-xl hover:bg-amber-100"
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                <User className="w-4 h-4" />
+                                <span>Profil</span>
+                            </motion.button>
+                        </div>
                     </div>
                 </div>
             </div>

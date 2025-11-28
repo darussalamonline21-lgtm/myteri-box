@@ -56,7 +56,8 @@ const campaignUpdateSchema = z.object({
   description: z.string().optional(),
   startDate: z.string().datetime('Invalid start date format').optional(),
   endDate: z.string().datetime('Invalid end date format').optional(),
-  minPurchasePerCoupon: z.number().positive('Minimum purchase per coupon must be positive').optional(),
+  // Min purchase per coupon dinonaktifkan; tetap izinkan angka non-negatif agar kompatibel
+  minPurchasePerCoupon: z.number().nonnegative('Minimum purchase per coupon must be >= 0').optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -360,13 +361,14 @@ export const updatePrize = async (req, res) => {
   const { id } = req.params;
   const { name, tier, type, stockTotal, baseProbability, isActive, description } = req.body;
 
-  // Handle file upload
-  const imageUrl = req.file ? `/uploads/prizes/${req.file.filename}` : undefined;
+  // Handle file upload or existing imageUrl
+  const uploadedImageUrl = req.file ? `/uploads/prizes/${req.file.filename}` : undefined;
+  const bodyImageUrl = req.body?.imageUrl;
 
   try {
     const existing = await prisma.prize.findUnique({
       where: { id: BigInt(id) },
-      select: { id: true, campaignId: true },
+      select: { id: true, campaignId: true, stockTotal: true, stockRemaining: true },
     });
     if (!existing) {
       return res.status(404).json({ message: 'Prize not found' });
@@ -377,13 +379,20 @@ export const updatePrize = async (req, res) => {
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (tier) updateData.tier = tier.trim();
     if (type) updateData.type = type.trim();
+
+    // Reconcile stockTotal and stockRemaining when stockTotal changes
     if (stockTotal !== undefined) {
       const parsedStock = Number(stockTotal);
       if (Number.isFinite(parsedStock) && parsedStock > 0) {
+        const delta = parsedStock - existing.stockTotal;
         updateData.stockTotal = parsedStock;
-        // Optional: Adjust stockRemaining logic if needed
+        updateData.stockRemaining = Math.max(
+          0,
+          Math.min(parsedStock, (existing.stockRemaining || 0) + delta)
+        );
       }
     }
+
     if (baseProbability !== undefined) {
       const parsedProb = Number(baseProbability);
       if (Number.isFinite(parsedProb) && parsedProb > 0) {
@@ -391,7 +400,11 @@ export const updatePrize = async (req, res) => {
       }
     }
     if (isActive !== undefined) updateData.isActive = isActive === 'true' || isActive === true;
-    if (imageUrl) updateData.imageUrl = imageUrl;
+    if (uploadedImageUrl) {
+      updateData.imageUrl = uploadedImageUrl;
+    } else if (bodyImageUrl) {
+      updateData.imageUrl = bodyImageUrl.trim();
+    }
 
     const prize = await prisma.prize.update({
       where: { id: BigInt(id) },
@@ -502,12 +515,57 @@ export const generateBoxesForCampaign = async (req, res) => {
 
     await bulkCreateBoxesForCampaign(campaign.id.toString(), parsedAmount, existingBoxCount + 1);
 
+    // Setelah membuat box, lakukan pre-assign hadiah yang stoknya masih ada
+    await assignPrizesToEmptyBoxes(campaign.id.toString());
+
     res.status(201).json({
       message: 'Boxes generated successfully',
       totalBoxes: existingBoxCount + parsedAmount,
     });
   } catch (error) {
     console.error('Generate boxes error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+/**
+ * @desc    Re-assign prizes to available boxes (pre-assign)
+ * @route   POST /api/v1/admin/campaigns/:id/boxes/reassign
+ * @access  Private (Superadmin)
+ */
+export const reassignPrizesForCampaign = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const campaign = await prisma.campaign.findUnique({
+      where: { id: BigInt(id) },
+      select: { id: true },
+    });
+    if (!campaign) {
+      return res.status(404).json({ message: 'Campaign not found' });
+    }
+
+    // Kosongkan prizeId pada box yang masih available
+    const cleared = await prisma.box.updateMany({
+      where: { campaignId: campaign.id, status: 'available' },
+      data: { prizeId: null },
+    });
+
+    // Assign ulang berdasarkan stok remaining hadiah aktif
+    await assignPrizesToEmptyBoxes(campaign.id.toString());
+
+    // Hitung berapa box available yang kini terisi prizeId
+    const assignedCount = await prisma.box.count({
+      where: { campaignId: campaign.id, status: 'available', prizeId: { not: null } },
+    });
+
+    res.status(200).json({
+      message: 'Prizes reassigned to available boxes',
+      cleared: cleared.count,
+      assigned: assignedCount,
+    });
+  } catch (error) {
+    console.error('Reassign prizes error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -520,9 +578,13 @@ export const generateBoxesForCampaign = async (req, res) => {
 export const createCampaign = async (req, res) => {
   const { name, description, startDate, endDate, minPurchasePerCoupon, isActive } = req.body;
 
-  if (!name || !startDate || !endDate || !minPurchasePerCoupon) {
-    return res.status(400).json({ message: 'Name, startDate, endDate, and minPurchasePerCoupon are required.' });
+  if (!name || !startDate || !endDate) {
+    return res.status(400).json({ message: 'Name, startDate, and endDate are required.' });
   }
+
+  const parsedMinPurchase = Number.isFinite(Number(minPurchasePerCoupon))
+    ? Number(minPurchasePerCoupon)
+    : 0;
 
   try {
     const newCampaign = await prisma.campaign.create({
@@ -531,7 +593,7 @@ export const createCampaign = async (req, res) => {
         description,
         startDate: new Date(startDate),
         endDate: new Date(endDate),
-        minPurchasePerCoupon: parseFloat(minPurchasePerCoupon),
+        minPurchasePerCoupon: parsedMinPurchase,
         roomSize: 100, // default room size
         isActive: isActive || false,
       }
@@ -699,6 +761,7 @@ export const deleteCampaign = async (req, res) => {
 
 const createUserAndAssignSchema = z.object({
   name: z.string().min(1, 'Name is required'),
+  ownerName: z.string().min(1, 'Owner name is required'),
   storeCode: z.string().min(1, 'storeCode is required'),
   password: z.string().min(6, 'Password must be at least 6 characters long'),
   campaignId: campaignIdSchema,
@@ -745,6 +808,61 @@ const generateReadablePassword = (base, digits = 4) => {
 
 const BOXES_PER_ROOM = 100;
 
+// Shuffle array in-place with crypto-based randomness
+const shuffleArray = (arr) => {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+// Assign prizes to boxes (pre-assign) based on available stock
+const assignPrizesToEmptyBoxes = async (campaignId) => {
+  // Fetch prizes with remaining stock
+  const prizes = await prisma.prize.findMany({
+    where: { campaignId: BigInt(campaignId), isActive: true, stockRemaining: { gt: 0 } },
+    select: { id: true, stockRemaining: true },
+  });
+  if (!prizes.length) return;
+
+  // Build prize pool
+  const prizePool = [];
+  prizes.forEach((p) => {
+    const count = Math.max(0, p.stockRemaining || 0);
+    for (let i = 0; i < count; i++) {
+      prizePool.push(p.id);
+    }
+  });
+  if (!prizePool.length) return;
+
+  // Fetch empty boxes
+  const emptyBoxes = await prisma.box.findMany({
+    where: { campaignId: BigInt(campaignId), prizeId: null },
+    select: { id: true },
+  });
+  if (!emptyBoxes.length) return;
+
+  // Shuffle prizes and cap to number of boxes
+  shuffleArray(prizePool);
+  const assignCount = Math.min(prizePool.length, emptyBoxes.length);
+
+  // Assign sequentially
+  const updates = [];
+  for (let i = 0; i < assignCount; i++) {
+    updates.push(
+      prisma.box.update({
+        where: { id: emptyBoxes[i].id },
+        data: { prizeId: prizePool[i] },
+      })
+    );
+  }
+
+  if (updates.length) {
+    await prisma.$transaction(updates, { timeout: 60000 });
+  }
+};
+
 /**
  * @desc    Create a user and immediately assign coupon balance for a campaign
  * @route   POST /api/v1/admin/users
@@ -752,7 +870,7 @@ const BOXES_PER_ROOM = 100;
  */
 export const createUserAndAssignCampaign = async (req, res) => {
   try {
-    const { name, storeCode, password, campaignId, initialCoupons, phone } =
+    const { name, ownerName, storeCode, password, campaignId, initialCoupons, phone } =
       createUserAndAssignSchema.parse(req.body);
 
     const campaign = await prisma.campaign.findUnique({
@@ -770,6 +888,7 @@ export const createUserAndAssignCampaign = async (req, res) => {
       const createdUser = await tx.user.create({
         data: {
           name: name.trim(),
+          ownerName: ownerName.trim(),
           storeCode: storeCode.trim(),
           phone: phone?.trim() || 'N/A',
           status: 'active',

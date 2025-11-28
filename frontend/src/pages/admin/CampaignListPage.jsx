@@ -13,7 +13,6 @@ const CampaignListPage = () => {
     description: '',
     startDate: '',
     endDate: '',
-    minPurchasePerCoupon: '',
     isActive: true,
   });
   const [isCreating, setIsCreating] = useState(false);
@@ -63,7 +62,7 @@ const CampaignListPage = () => {
     try {
       await campaignApi.createCampaign({
         ...createForm,
-        minPurchasePerCoupon: Number(createForm.minPurchasePerCoupon),
+        minPurchasePerCoupon: 0,
       });
       setSuccess('Campaign created successfully');
       setShowCreate(false);
@@ -72,7 +71,6 @@ const CampaignListPage = () => {
         description: '',
         startDate: '',
         endDate: '',
-        minPurchasePerCoupon: '',
         isActive: true,
       });
       await fetchCampaigns();
@@ -168,17 +166,6 @@ const CampaignListPage = () => {
                 className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
               />
             </div>
-            <div>
-              <label className="block text-sm text-gray-300 mb-1">Min Purchase per Coupon *</label>
-              <input
-                type="number"
-                min="0"
-                required
-                value={createForm.minPurchasePerCoupon}
-                onChange={(e) => setCreateForm({ ...createForm, minPurchasePerCoupon: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
-              />
-            </div>
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -233,7 +220,6 @@ const CampaignListPage = () => {
                       <th className="py-3 px-4 text-left">Status</th>
                       <th className="py-3 px-4 text-left">Start Date</th>
                       <th className="py-3 px-4 text-left">End Date</th>
-                      <th className="py-3 px-4 text-left">Min Purchase</th>
                       <th className="py-3 px-4 text-left">Boxes</th>
                       <th className="py-3 px-4 text-left">Prizes</th>
                       <th className="py-3 px-4 text-right">Actions</th>
@@ -266,9 +252,6 @@ const CampaignListPage = () => {
                           </td>
                           <td className="py-4 px-4">{formatDate(campaign.startDate)}</td>
                           <td className="py-4 px-4">{formatDate(campaign.endDate)}</td>
-                          <td className="py-4 px-4">
-                            Rp {parseFloat(campaign.minPurchasePerCoupon).toLocaleString('id-ID')}
-                          </td>
                           <td className="py-4 px-4">{campaign.totalBoxes || 0}</td>
                           <td className="py-4 px-4">{campaign.totalPrizes || 0}</td>
                           <td className="py-4 px-4 text-right">

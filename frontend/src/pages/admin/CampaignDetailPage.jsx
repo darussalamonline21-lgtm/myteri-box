@@ -40,6 +40,22 @@ const CampaignDetailPage = () => {
   const [isLoadingBoxes, setIsLoadingBoxes] = useState(false);
   const [room, setRoom] = useState(1);
 
+  // Derive probability info for Tier S
+  const totalCouponsEarned = campaign?.totalCouponsEarned || 0;
+  const totalCouponsUsed = campaign?.totalCouponsUsed || 0;
+  const totalCouponsBalance = campaign?.totalCouponsBalance || 0;
+  const remainingOpens = Math.max(0, totalCouponsEarned - totalCouponsUsed);
+  const tierSPrizes = (campaign?.prizes || []).filter(
+    (p) => (p.tier || '').toUpperCase() === 'S' && p.isActive
+  );
+  const remainingMain = tierSPrizes.reduce((sum, p) => sum + (p.stockRemaining || 0), 0);
+  const pTierS = remainingOpens > 0 ? Math.min(1, remainingMain / remainingOpens) : 0;
+  // baseProbability disimpan sebagai bobot 0-1; untuk tampilan, kalikan 100 agar mudah dibaca
+  const tierSWeightSum = tierSPrizes.reduce(
+    (sum, p) => sum + (Number(p.baseProbability) * 100 || 0),
+    0
+  );
+
   useEffect(() => {
     fetchCampaignDetail();
   }, [id]);
@@ -110,7 +126,8 @@ const CampaignDetailPage = () => {
       formData.append('tier', prizeForm.tier);
       formData.append('type', prizeForm.type.trim());
       formData.append('stockTotal', Number(prizeForm.stockTotal));
-      formData.append('baseProbability', Number(prizeForm.baseProbability));
+      // Input di UI dianggap persen (0-100), backend disimpan sebagai bobot 0-1
+      formData.append('baseProbability', Number(prizeForm.baseProbability) / 100);
       formData.append('description', prizeForm.description?.trim() || '');
       if (prizeImageFile) {
         formData.append('image', prizeImageFile);
@@ -141,7 +158,8 @@ const CampaignDetailPage = () => {
       tier: prize.tier || 'A',
       type: prize.type || '',
       stockTotal: prize.stockTotal || '',
-      baseProbability: prize.baseProbability || '',
+      // Tampilkan kembali sebagai persen di UI
+      baseProbability: prize.baseProbability ? (Number(prize.baseProbability) * 100).toString() : '',
       imageUrl: prize.imageUrl || '',
       description: prize.description || '',
     });
@@ -187,7 +205,8 @@ const CampaignDetailPage = () => {
       formData.append('tier', editPrizeForm.tier);
       formData.append('type', editPrizeForm.type.trim());
       formData.append('stockTotal', Number(editPrizeForm.stockTotal));
-      formData.append('baseProbability', Number(editPrizeForm.baseProbability));
+      // Simpan sebagai bobot 0-1
+      formData.append('baseProbability', Number(editPrizeForm.baseProbability) / 100);
       formData.append('description', editPrizeForm.description?.trim() || '');
       if (editPrizeImageFile) {
         formData.append('image', editPrizeImageFile);
@@ -231,9 +250,6 @@ const CampaignDetailPage = () => {
   };
 
   const totalPrizeUnits = campaign?.prizes?.reduce((sum, p) => sum + (p.stockTotal || 0), 0) || 0;
-  const totalCouponsEarned = campaign?.totalCouponsEarned || 0;
-  const totalCouponsUsed = campaign?.totalCouponsUsed || 0;
-  const totalCouponsBalance = campaign?.totalCouponsBalance || 0;
 
   if (isLoading) {
     return (
@@ -330,8 +346,14 @@ const CampaignDetailPage = () => {
             <p className="text-xs text-gray-500">Used: {totalCouponsUsed} | Balance: {totalCouponsBalance}</p>
           </div>
           <div className="bg-gray-800 rounded-2xl p-6 border border-gray-700">
-            <p className="text-sm text-gray-400">Min Purchase / Coupon</p>
-            <p className="text-3xl font-bold mt-2">Rp {campaign?.minPurchasePerCoupon}</p>
+            <p className="text-sm text-gray-400">Peluang hadiah Tier S (klik berikutnya)</p>
+            <div className="flex items-baseline gap-2 mt-2">
+              <p className="text-3xl font-bold text-amber-300">{(pTierS * 100).toFixed(2)}%</p>
+              <span className="text-xs text-gray-400">≈ {remainingMain} stok S tersisa</span>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Kupon yang belum dipakai: {remainingOpens || 0} • Total bobot Tier S: {tierSWeightSum || 0}
+            </p>
           </div>
         </div>
 
@@ -482,13 +504,14 @@ const CampaignDetailPage = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2" htmlFor="baseProbability">Base Probability *</label>
+                <label className="block text-sm font-semibold mb-2" htmlFor="baseProbability">Base Probability (%) *</label>
                 <input
                   id="baseProbability"
                   name="baseProbability"
                   type="number"
                   min="0"
-                  step="0.0001"
+                  max="100"
+                  step="0.01"
                   required
                   value={prizeForm.baseProbability}
                   onChange={handlePrizeInputChange}
@@ -590,7 +613,9 @@ const CampaignDetailPage = () => {
                       <td className="px-6 py-4">
                         {prize.stockRemaining}/{prize.stockTotal}
                       </td>
-                      <td className="px-6 py-4">{prize.baseProbability}</td>
+                      <td className="px-6 py-4">
+                        {(Number(prize.baseProbability) * 100).toFixed(2)}%
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${prize.isActive ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}`}>
                           {prize.isActive ? 'Active' : 'Inactive'}
@@ -722,13 +747,14 @@ const CampaignDetailPage = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2" htmlFor="edit-baseProbability">Base Probability *</label>
+                <label className="block text-sm font-semibold mb-2" htmlFor="edit-baseProbability">Base Probability (%) *</label>
                 <input
                   id="edit-baseProbability"
                   name="baseProbability"
                   type="number"
                   min="0"
-                  step="0.0001"
+                  max="100"
+                  step="0.01"
                   required
                   value={editPrizeForm.baseProbability}
                   onChange={handleEditPrizeInputChange}
@@ -752,11 +778,11 @@ const CampaignDetailPage = () => {
                 <input
                   id="edit-imageUrl"
                   name="imageUrl"
-                  type="url"
+                  type="text"
                   value={editPrizeForm.imageUrl}
                   onChange={handleEditPrizeInputChange}
                   className="w-full rounded-lg bg-gray-900 border border-gray-700 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="https://example.com/image.jpg"
+                  placeholder="https://example.com/image.jpg atau /uploads/prizes/file.webp"
                 />
               </div>
               <div className="md:col-span-2 flex justify-end gap-3">
