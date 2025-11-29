@@ -51,14 +51,43 @@ export const loginAdmin = async (req, res) => {
   }
 };
 
+const parseDateInput = z.preprocess((val) => {
+  if (val === undefined) return undefined;
+  if (val === null) return undefined;
+  const date = new Date(val);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}, z.date());
+
 const campaignUpdateSchema = z.object({
   name: z.string().min(1, 'Name is required').optional(),
-  description: z.string().optional(),
-  startDate: z.string().datetime('Invalid start date format').optional(),
-  endDate: z.string().datetime('Invalid end date format').optional(),
+  description: z.preprocess(
+    (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      const str = String(value).trim();
+      if (!str) return null;
+      return str;
+    },
+    z.union([z.string(), z.null()])
+  ).optional(),
+  startDate: parseDateInput.optional(),
+  endDate: parseDateInput.optional(),
   // Min purchase per coupon dinonaktifkan; tetap izinkan angka non-negatif agar kompatibel
   minPurchasePerCoupon: z.number().nonnegative('Minimum purchase per coupon must be >= 0').optional(),
   isActive: z.boolean().optional(),
+  adminWhatsappNumber: z.preprocess(
+    (value) => {
+      if (value === undefined) return undefined;
+      if (value === null) return null;
+      const str = String(value).trim();
+      if (!str) return null;
+      return str;
+    },
+    z.union([
+      z.string().min(3, 'WhatsApp number too short').max(32, 'WhatsApp number too long'),
+      z.null(),
+    ])
+  ).optional(),
 });
 
 // Helper function to convert BigInt and Decimal to strings
@@ -576,7 +605,15 @@ export const reassignPrizesForCampaign = async (req, res) => {
  * @access  Private (Superadmin)
  */
 export const createCampaign = async (req, res) => {
-  const { name, description, startDate, endDate, minPurchasePerCoupon, isActive } = req.body;
+  const {
+    name,
+    description,
+    startDate,
+    endDate,
+    minPurchasePerCoupon,
+    isActive,
+    adminWhatsappNumber,
+  } = req.body;
 
   if (!name || !startDate || !endDate) {
     return res.status(400).json({ message: 'Name, startDate, and endDate are required.' });
@@ -596,6 +633,7 @@ export const createCampaign = async (req, res) => {
         minPurchasePerCoupon: parsedMinPurchase,
         roomSize: 100, // default room size
         isActive: isActive || false,
+        adminWhatsappNumber: adminWhatsappNumber || null,
       }
     });
 
@@ -636,10 +674,13 @@ export const updateCampaign = async (req, res) => {
     const updateData = {};
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
     if (validatedData.description !== undefined) updateData.description = validatedData.description;
-    if (validatedData.startDate !== undefined) updateData.startDate = new Date(validatedData.startDate);
-    if (validatedData.endDate !== undefined) updateData.endDate = new Date(validatedData.endDate);
+    if (validatedData.startDate !== undefined) updateData.startDate = validatedData.startDate;
+    if (validatedData.endDate !== undefined) updateData.endDate = validatedData.endDate;
     if (validatedData.minPurchasePerCoupon !== undefined) updateData.minPurchasePerCoupon = validatedData.minPurchasePerCoupon;
     if (validatedData.isActive !== undefined) updateData.isActive = validatedData.isActive;
+     if (validatedData.adminWhatsappNumber !== undefined) {
+       updateData.adminWhatsappNumber = validatedData.adminWhatsappNumber || null;
+     }
 
     // Update the campaign
     const updatedCampaign = await prisma.campaign.update({

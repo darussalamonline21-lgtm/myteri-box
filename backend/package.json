@@ -5,7 +5,7 @@
   "main": "index.js",
   "type": "module",
   "prisma": {
-    "seed": "node prisma/seed.js"
+ 
   },
   "scripts": {
     "start": "cross-env NODE_ENV=production node src/server.js",

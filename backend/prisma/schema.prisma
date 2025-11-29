@@ -51,6 +51,7 @@ model Campaign {
   minPurchasePerCoupon Decimal
   roomSize             Int       @default(100)
   maxCouponsPerUser    Int?
+  adminWhatsappNumber  String?   // Nomor WA admin untuk campaign ini
   isActive             Boolean   @default(true)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt

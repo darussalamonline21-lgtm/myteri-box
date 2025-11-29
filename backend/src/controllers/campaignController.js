@@ -300,7 +300,7 @@ export const getMyPrizes = async (req, res) => {
         id: true,
         createdAt: true,
         status: true,
-        campaign: { select: { id: true, name: true } },
+        campaign: { select: { id: true, name: true, adminWhatsappNumber: true } },
         prize: { select: { name: true, tier: true, type: true, imageUrl: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -320,7 +320,13 @@ export const getMyPrizes = async (req, res) => {
       },
     }));
 
-    res.status(200).json(formattedPrizes);
+    const adminWhatsappNumber =
+      userPrizes.length > 0 ? userPrizes[0].campaign.adminWhatsappNumber ?? null : null;
+
+    res.status(200).json({
+      items: formattedPrizes,
+      adminWhatsappNumber,
+    });
   } catch (error) {
     console.error('Get my prizes error:', error);
     res.status(500).json({ message: 'Internal server error' });

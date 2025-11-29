@@ -8,8 +8,9 @@ const CampaignFormPage = () => {
     description: '',
     startDate: '',
     endDate: '',
+    adminWhatsappNumber: '',
     isActive: false,
-    boxCount: 1000
+    boxCount: 1000,
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -52,6 +53,7 @@ const CampaignFormPage = () => {
         startDate: new Date(formData.startDate).toISOString(),
         endDate: new Date(formData.endDate).toISOString(),
         minPurchasePerCoupon: 0,
+        adminWhatsappNumber: formData.adminWhatsappNumber.trim() || null,
         isActive: formData.isActive,
         boxCount: parseInt(formData.boxCount)
       };
@@ -131,6 +133,23 @@ const CampaignFormPage = () => {
                 className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
                 placeholder="Enter campaign description (optional)"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Admin WhatsApp Number
+              </label>
+              <input
+                type="tel"
+                name="adminWhatsappNumber"
+                value={formData.adminWhatsappNumber}
+                onChange={handleChange}
+                className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                placeholder="Contoh: 62812xxxxxxx (opsional)"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Nomor ini dipakai untuk tombol kirim ringkasan hadiah (WhatsApp) di aplikasi user.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

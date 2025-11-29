@@ -10,7 +10,8 @@ const CampaignEditPage = () => {
     description: '',
     startDate: '',
     endDate: '',
-    isActive: false
+    adminWhatsappNumber: '',
+    isActive: false,
   });
   const [campaignData, setCampaignData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,7 +35,8 @@ const CampaignEditPage = () => {
         description: data.description || '',
         startDate: data.startDate ? new Date(data.startDate).toISOString().split('T')[0] : '',
         endDate: data.endDate ? new Date(data.endDate).toISOString().split('T')[0] : '',
-        isActive: data.isActive || false
+        adminWhatsappNumber: data.adminWhatsappNumber || '',
+        isActive: data.isActive || false,
       });
     } catch (err) {
       console.error('Failed to load campaign:', err);
@@ -78,6 +80,7 @@ const CampaignEditPage = () => {
         startDate: new Date(formData.startDate).toISOString(),
         endDate: new Date(formData.endDate).toISOString(),
         minPurchasePerCoupon: 0,
+        adminWhatsappNumber: formData.adminWhatsappNumber.trim() || null,
         isActive: formData.isActive
       };
 
@@ -225,6 +228,23 @@ const CampaignEditPage = () => {
                 className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
                 placeholder="Enter campaign description (optional)"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Admin WhatsApp Number
+              </label>
+              <input
+                type="tel"
+                name="adminWhatsappNumber"
+                value={formData.adminWhatsappNumber}
+                onChange={handleChange}
+                className="w-full px-3 py-2 bg-gray-700 text-white rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                placeholder="Contoh: 62812xxxxxxx (opsional)"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Nomor ini dipakai untuk tombol kirim ringkasan hadiah (WhatsApp) di aplikasi user.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

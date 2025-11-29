@@ -13,6 +13,7 @@ const CampaignListPage = () => {
     description: '',
     startDate: '',
     endDate: '',
+    adminWhatsappNumber: '',
     isActive: true,
   });
   const [isCreating, setIsCreating] = useState(false);
@@ -62,6 +63,7 @@ const CampaignListPage = () => {
     try {
       await campaignApi.createCampaign({
         ...createForm,
+        adminWhatsappNumber: (createForm.adminWhatsappNumber || '').trim() || null,
         minPurchasePerCoupon: 0,
       });
       setSuccess('Campaign created successfully');
@@ -71,6 +73,7 @@ const CampaignListPage = () => {
         description: '',
         startDate: '',
         endDate: '',
+        adminWhatsappNumber: '',
         isActive: true,
       });
       await fetchCampaigns();
@@ -165,6 +168,19 @@ const CampaignListPage = () => {
                 onChange={(e) => setCreateForm({ ...createForm, endDate: e.target.value })}
                 className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
               />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm text-gray-300 mb-1">Admin WhatsApp Number</label>
+              <input
+                type="tel"
+                value={createForm.adminWhatsappNumber}
+                onChange={(e) => setCreateForm({ ...createForm, adminWhatsappNumber: e.target.value })}
+                className="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-white"
+                placeholder="Contoh: 62812xxxxxxx (opsional)"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Nomor ini dipakai untuk tombol kirim ringkasan hadiah (WhatsApp) di aplikasi user.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <input

@@ -10,6 +10,8 @@ const MyPrizesPage = () => {
     const [prizes, setPrizes] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [adminWhatsappNumber, setAdminWhatsappNumber] = useState('');
+    const [userProfile, setUserProfile] = useState(null);
 
     const fetchMyPrizes = useCallback(async () => {
         if (!currentCampaignId) return;
@@ -17,8 +19,10 @@ const MyPrizesPage = () => {
             setIsLoading(true);
             setError('');
             const response = await apiClient.get(`/campaigns/${currentCampaignId}/my-prizes`);
-            const prizesData = response.data.items || response.data || [];
+            const payload = response.data || {};
+            const prizesData = payload.items || payload || [];
             setPrizes(Array.isArray(prizesData) ? prizesData : []);
+            setAdminWhatsappNumber(payload.adminWhatsappNumber || '');
         } catch (err) {
             console.error('Failed to fetch prizes:', err);
             setError(err.response?.data?.message || 'Riwayat hadiah tidak bisa dimuat');
@@ -34,6 +38,29 @@ const MyPrizesPage = () => {
         }
         fetchMyPrizes();
     }, [currentCampaignId, fetchMyPrizes]);
+
+    // Ambil profil toko dari summary agar nama toko selalu sinkron
+    useEffect(() => {
+        if (!currentCampaignId) return;
+
+        const fetchProfile = async () => {
+            try {
+                const response = await apiClient.get(`/campaigns/${currentCampaignId}/summary`);
+                const profile = {
+                    name: response.data?.user?.name || '',
+                    ownerName: response.data?.user?.ownerName || '',
+                };
+                setUserProfile(profile);
+                // Simpan di localStorage supaya halaman lain juga dapat nama toko
+                if (profile.name) localStorage.setItem('storeName', profile.name);
+                if (profile.ownerName) localStorage.setItem('ownerName', profile.ownerName);
+            } catch (err) {
+                console.error('Failed to fetch profile for prizes page:', err);
+            }
+        };
+
+        fetchProfile();
+    }, [currentCampaignId]);
 
     const isPointPrize = (prize) => {
         const type = (prize?.type || '').toLowerCase();
@@ -73,12 +100,19 @@ const MyPrizesPage = () => {
     }, [prizes]);
 
     const buildSummaryMessage = useCallback(() => {
-        const storeCode = localStorage.getItem('storeCode') || 'ISI_KODE_TOKO';
-        const storeName = localStorage.getItem('storeName') || '';
+        const storeName =
+            userProfile?.name ||
+            localStorage.getItem('storeName') ||
+            localStorage.getItem('storeCode') ||
+            'Toko Saya';
+        const ownerName =
+            userProfile?.ownerName ||
+            localStorage.getItem('ownerName') ||
+            '';
         const lines = [
             'Halo Admin, berikut ringkasan hadiah saya:',
-            storeName ? `Toko: ${storeName}` : '',
-            `Store Code: ${storeCode}`,
+            `Toko: ${storeName}`,
+            ownerName ? `Nama Pemilik: ${ownerName}` : '',
             `Total Hadiah: ${prizeSummary.totalCount || 0}`,
         ];
 
@@ -104,9 +138,12 @@ const MyPrizesPage = () => {
     const summaryMessage = useMemo(() => buildSummaryMessage(), [buildSummaryMessage]);
 
     const handleSendWhatsapp = () => {
-        const ADMIN_WA_NUMBER = import.meta.env.VITE_ADMIN_WA_NUMBER || '';
+        const ADMIN_WA_NUMBER =
+            adminWhatsappNumber ||
+            import.meta.env.VITE_ADMIN_WA_NUMBER ||
+            '';
         if (!ADMIN_WA_NUMBER) {
-            alert('Nomor WhatsApp admin belum diset. Tambahkan VITE_ADMIN_WA_NUMBER di env frontend.');
+            alert('Nomor WhatsApp admin belum diset. Isi nomor di database (field adminWhatsappNumber di Campaign) atau set VITE_ADMIN_WA_NUMBER di env frontend.');
             return;
         }
         const msg = summaryMessage;
