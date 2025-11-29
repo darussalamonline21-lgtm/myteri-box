@@ -14,10 +14,7 @@ export const deriveRoomsMeta = (boxes, roomSize, unlockThreshold = getRoomUnlock
     const roomBoxes = boxes.slice(startIndex, startIndex + roomSize);
     const openedCount = roomBoxes.filter(box => box.status === 'opened').length;
     const remainingBoxes = roomBoxes.length - openedCount;
-    const prevRoom = rooms[i - 1];
-    const isUnlocked = i === 0
-      ? true
-      : Boolean(prevRoom?.isUnlocked && prevRoom.openedCount >= unlockThreshold);
+    const isUnlocked = true; // Semua room selalu ditampilkan dan dianggap terbuka
 
     rooms.push({
       roomNumber: i + 1,

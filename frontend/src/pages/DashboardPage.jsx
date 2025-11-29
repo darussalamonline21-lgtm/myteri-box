@@ -71,10 +71,7 @@ const deriveRoomsMeta = (boxes, roomSize, unlockThreshold) => {
         const roomBoxes = boxes.slice(startIndex, startIndex + roomSize);
         const openedCount = roomBoxes.filter(box => box.status === 'opened').length;
         const remainingBoxes = roomBoxes.length - openedCount;
-        const prevRoom = rooms[i - 1];
-        const isUnlocked = i === 0
-            ? true
-            : Boolean(prevRoom?.isUnlocked && prevRoom.openedCount >= unlockThreshold);
+        const isUnlocked = true; // Semua room terlihat sejak awal
 
         rooms.push({
             roomNumber: i + 1,
@@ -424,9 +421,6 @@ const DashboardPage = () => {
                                                     Foto hadiah belum tersedia
                                                 </div>
                                             )}
-                                            <div className="absolute bottom-2 right-2 px-2 py-1 rounded-full text-[10px] font-semibold text-white bg-amber-500 shadow-sm">
-                                                {wonPrize.tier} Tier
-                                            </div>
                                         </motion.div>
                                         <p className="text-lg md:text-xl font-semibold text-slate-900 mb-1">{wonPrize.name}</p>
                                         <p className="text-xs text-slate-600 font-medium mb-1">
@@ -499,9 +493,9 @@ const DashboardPage = () => {
                                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
                                     <p className="text-sm text-amber-900 font-semibold">Cara Main</p>
                                     <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
-                                        <li>Kumpulkan kupon dari transaksi yang memenuhi syarat.</li>
-                                        <li>Pilih room, pilih box yang masih available, lalu buka.</li>
-                                        <li>Lihat hadiah yang muncul; stats & kupon terupdate otomatis.</li>
+                                        <li>Dapatkan kupon dari transaksi yang memenuhi syarat.</li>
+                                        <li>Pilih room, pilih box yang masih tersedia , lalu buka.</li>
+                                        <li>Lihat hadiah yang muncul, stats & kupon terupdate otomatis.</li>
                                     </ul>
                                 </div>
 

@@ -35,6 +35,19 @@ const MyPrizesPage = () => {
         fetchMyPrizes();
     }, [currentCampaignId, fetchMyPrizes]);
 
+    const isPointPrize = (prize) => {
+        const type = (prize?.type || '').toLowerCase();
+        const text = `${prize?.name || ''} ${prize?.description || ''}`.toLowerCase();
+        return type.includes('point') || text.includes('point') || text.includes('poin');
+    };
+
+    const extractPointValue = (prize) => {
+        const text = `${prize?.name || ''} ${prize?.description || ''}`;
+        const digits = text.replace(/[^\d]/g, '');
+        const parsed = Number(digits);
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
     // Ringkasan prize (pastikan hook dipanggil sebelum return lain)
     const prizeSummary = useMemo(() => {
         let totalPoints = 0;
@@ -42,15 +55,14 @@ const MyPrizesPage = () => {
         const itemCounts = {};
 
         prizes.forEach((p, idx) => {
-            const type = (p.type || '').toLowerCase();
-            if (type === 'points') {
-                const match = `${p.name || ''} ${p.description || ''}`.match(/(\d+)/);
-                const val = match ? Number(match[1]) : 0;
-                totalPoints += val;
+            if (isPointPrize(p)) {
+                totalPoints += extractPointValue(p);
                 pointRewards += 1;
             }
             const nameKey = String(p?.name || p?.description || `Hadiah-${idx}`);
-            itemCounts[nameKey] = (itemCounts[nameKey] || 0) + 1;
+            if (!isPointPrize(p)) {
+                itemCounts[nameKey] = (itemCounts[nameKey] || 0) + 1;
+            }
         });
 
         const itemsArray = Object.entries(itemCounts).map(([name, count]) => ({
@@ -60,40 +72,36 @@ const MyPrizesPage = () => {
         return { totalPoints, pointRewards, itemsArray, totalCount: prizes.length };
     }, [prizes]);
 
-    const buildSummaryMessage = () => {
-        let totalPoints = 0;
-        const itemCounts = {};
-        let totalPointRewards = 0;
-
-        prizes.forEach((p, idx) => {
-            if ((p.type || '').toLowerCase() === 'points') {
-                const match = `${p.name || ''} ${p.description || ''}`.match(/(\d+)/);
-                const val = match ? Number(match[1]) : 0;
-                totalPoints += val;
-                totalPointRewards += 1;
-            } else {
-                const key = String(p?.name || p?.description || `Hadiah-${idx}`);
-                itemCounts[key] = (itemCounts[key] || 0) + 1;
-            }
-        });
-
-        const itemLines = Object.entries(itemCounts)
-            .map(([name, count]) => `- ${name}: ${count}x`)
-            .join('\n');
-
+    const buildSummaryMessage = useCallback(() => {
         const storeCode = localStorage.getItem('storeCode') || 'ISI_KODE_TOKO';
-
-        return [
-            `Halo Admin, berikut ringkasan hadiah saya:`,
+        const storeName = localStorage.getItem('storeName') || '';
+        const lines = [
+            'Halo Admin, berikut ringkasan hadiah saya:',
+            storeName ? `Toko: ${storeName}` : '',
             `Store Code: ${storeCode}`,
-            `Total Hadiah: ${prizes.length}`,
-            `Total Poin: ${totalPoints}`,
-            totalPointRewards ? `Jumlah Hadiah Poin: ${totalPointRewards}` : '',
-            itemLines ? 'Hadiah Barang:' : '',
-            itemLines,
-            `Dikirim otomatis dari halaman Hadiah Saya.`
-        ].filter(Boolean).join('\n');
-    };
+            `Total Hadiah: ${prizeSummary.totalCount || 0}`,
+        ];
+
+        if (prizeSummary.itemsArray.length > 0) {
+            lines.push('Hadiah Barang:');
+            prizeSummary.itemsArray.forEach(item => {
+                lines.push(`- ${item.name}: ${item.count}x`);
+            });
+        }
+
+        if (prizeSummary.totalPoints > 0) {
+            const suffix = prizeSummary.pointRewards
+                ? ` (dari ${prizeSummary.pointRewards} hadiah poin)`
+                : '';
+            lines.push(`Total Poin: ${prizeSummary.totalPoints}${suffix}`);
+        }
+
+        lines.push('Dikirim otomatis dari halaman Hadiah Saya.');
+
+        return lines.filter(Boolean).join('\n');
+    }, [prizeSummary]);
+
+    const summaryMessage = useMemo(() => buildSummaryMessage(), [buildSummaryMessage]);
 
     const handleSendWhatsapp = () => {
         const ADMIN_WA_NUMBER = import.meta.env.VITE_ADMIN_WA_NUMBER || '';
@@ -101,10 +109,11 @@ const MyPrizesPage = () => {
             alert('Nomor WhatsApp admin belum diset. Tambahkan VITE_ADMIN_WA_NUMBER di env frontend.');
             return;
         }
-        const msg = buildSummaryMessage();
+        const msg = summaryMessage;
         const waUrl = `https://wa.me/${ADMIN_WA_NUMBER}?text=${encodeURIComponent(msg)}`;
         window.open(waUrl, '_blank');
     };
+
 
     const tierClasses = {
         S: 'bg-purple-400 text-purple-900',
@@ -254,13 +263,19 @@ const MyPrizesPage = () => {
                             <span className="text-sky-200 text-sm font-bold">Per jenis</span>
                         </div>
                         <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                            {prizeSummary.totalPoints > 0 && (
+                                <div className="flex items-center justify-between text-sm text-sky-100 font-semibold bg-sky-900/30 border border-sky-700/40 rounded-lg px-3 py-1">
+                                    <span className="truncate text-white">Poin</span>
+                                    <span className="ml-2 text-sky-200">{prizeSummary.totalPoints}</span>
+                                </div>
+                            )}
                             {prizeSummary.itemsArray.map((item, idx) => (
                                 <div key={`${item.name}-${idx}`} className="flex items-center justify-between text-sm text-sky-100 font-semibold bg-sky-900/30 border border-sky-700/40 rounded-lg px-3 py-1">
                                     <span className="truncate text-white">{item.name}</span>
                                     <span className="ml-2 text-sky-200">{item.count}x</span>
                                 </div>
                             ))}
-                            {prizeSummary.itemsArray.length === 0 && (
+                            {prizeSummary.itemsArray.length === 0 && prizeSummary.totalPoints === 0 && (
                                 <div className="text-sm text-sky-200">Belum ada hadiah.</div>
                             )}
                         </div>
@@ -297,18 +312,15 @@ const MyPrizesPage = () => {
                                     <th className="py-4 px-6 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
                                         Tanggal Menang
                                     </th>
-                                    <th className="py-4 px-6 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                                        Hadiah
-                                    </th>
-                                    <th className="py-4 px-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider">
-                                        Tier
-                                    </th>
-                                    <th className="py-4 px-4 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
-                                        Status
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-slate-950/60 divide-y divide-slate-900">
+                            <th className="py-4 px-6 text-left text-xs font-medium text-slate-400 uppercase tracking-wider">
+                                Hadiah
+                            </th>
+                            <th className="py-4 px-4 text-center text-xs font-medium text-slate-400 uppercase tracking-wider w-28">
+                                Tier
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-slate-950/60 divide-y divide-slate-900">
                                 {sortedPrizes.map((prize) => (
                                     <tr key={prize.id} className="hover:bg-slate-900 transition-colors">
                                         <td className="py-4 px-6 whitespace-nowrap text-sm text-slate-300">
@@ -350,11 +362,6 @@ const MyPrizesPage = () => {
                                                 {prize.tier || 'N/A'}
                                             </span>
                                         </td>
-                                        <td className="py-4 px-4 whitespace-nowrap text-sm text-slate-300">
-                                            <span className="capitalize">
-                                                {prize.status || 'Menang'}
-                                            </span>
-                                        </td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -391,7 +398,7 @@ const MyPrizesPage = () => {
                                         <p className="text-sm text-slate-300 mb-2">
                                             {prize.type || prize.description || 'Hadiah Misteri'}
                                         </p>
-                                        <div className="flex items-center justify-between text-xs text-slate-400">
+                                        <div className="flex items-center text-xs text-slate-400">
                                             <span>
                                                 {new Date(prize.createdAt).toLocaleDateString('id-ID', {
                                                     month: 'short',
@@ -399,7 +406,6 @@ const MyPrizesPage = () => {
                                                     year: 'numeric',
                                                 })}
                                             </span>
-                                            <span className="capitalize text-slate-200">{prize.status || 'Menang'}</span>
                                         </div>
                                     </div>
                                 </div>
